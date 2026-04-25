@@ -1,0 +1,35 @@
+name: .NET Core Build and Release
+
+on:
+  push:
+  
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Restore dependencies
+      run: dotnet restore ImageMosaicEditor.sln
+
+    - name: Publish Application
+      run: dotnet publish ImageMosaicEditor.csproj -c Release -r win-x64 --self-contained false -o ./publish
+
+    - name: Zip Artifact
+      shell: pwsh
+      run: |
+        Compress-Archive -Path ./publish/* -DestinationPath ImageMosaicEditor-win-x64.zip
+
+    - name: Create Release and Upload Asset
+      uses: softprops/action-gh-release@v2
+      with:
+        files: ImageMosaicEditor-win-x64.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
