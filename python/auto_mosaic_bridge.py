@@ -9,7 +9,6 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
-DEFAULT_MODEL = Path(__file__).resolve().parent / "models" / "ntd11_anime_nsfw_segm_v5.pt"
 
 
 def parse_args():
@@ -24,13 +23,16 @@ def parse_args():
     p.add_argument("--strength", type=int, default=20)
     p.add_argument("--confidence", type=float, default=0.25)
     p.add_argument("--padding", type=int, default=10)
-    p.add_argument("--detector", choices=["auto", "imgutils", "ntd11"], default="auto")
     p.add_argument("--include-nipple", action="store_true")
     p.add_argument("--include-anus", action="store_true")
     p.add_argument("--include-testicles", action="store_true")
-    p.add_argument("--ntd11-model", type=Path)
     p.add_argument("--copy-undetected", action="store_true")
     return p.parse_args()
+
+
+def emit_progress(value: int, message: str):
+    payload = {"type": "progress", "value": max(0, min(100, int(value))), "message": message}
+    print(json.dumps(payload, ensure_ascii=False), flush=True)
 
 
 def _load_imgutils():
@@ -38,89 +40,43 @@ def _load_imgutils():
         from imgutils.detect import detect_censors, detect_with_nudenet
         return detect_censors, detect_with_nudenet
     except ImportError as exc:
-        raise RuntimeError(
-            "dghs-imgutils가 설치되어 있지 않습니다. 자동 모자이크 > Python 의존성 설치를 실행하세요."
-        ) from exc
+        raise RuntimeError("자동 검출 의존성을 불러오지 못했습니다. Release 파일이 손상되었을 수 있습니다.") from exc
 
 
-def _detect_ntd11(image, model_path: Path, labels: set[str], confidence: float):
-    try:
-        from ultralytics import YOLO
-    except ImportError as exc:
-        raise RuntimeError("NTD11을 사용하려면 ultralytics가 필요합니다: pip install ultralytics") from exc
-    if not model_path.is_file():
-        raise RuntimeError(f"NTD11 모델 파일을 찾을 수 없습니다: {model_path}")
-    model = _detect_ntd11._cache.get(str(model_path))
-    if model is None:
-        model = YOLO(str(model_path))
-        _detect_ntd11._cache[str(model_path)] = model
-    detections = []
-    for result in model.predict(source=image, conf=confidence, iou=0.7, verbose=False):
-        boxes = result.boxes
-        if boxes is None:
-            continue
-        for i in range(len(boxes)):
-            x0, y0, x1, y1 = boxes.xyxy[i].tolist()
-            class_id = int(boxes.cls[i].item())
-            score = float(boxes.conf[i].item())
-            label = str(model.names[class_id])
-            if label in labels:
-                detections.append(((int(round(x0)), int(round(y0)), int(round(x1)), int(round(y1))), label, score))
-    return detections
-
-
-_detect_ntd11._cache = {}
-
-
-def detect(image, args):
-    model_path = (args.ntd11_model or DEFAULT_MODEL).resolve()
-    base_labels = {"pussy", "penis"}
-    if args.include_nipple:
-        base_labels.add("nipple_f")
-
-    if args.detector == "ntd11":
-        labels = {"pussy", "penis"}
-        if args.include_nipple:
-            labels.add("nipples")
-        if args.include_anus:
-            labels.add("anus")
-        if args.include_testicles:
-            labels.add("testicles")
-        return _detect_ntd11(image, model_path, labels, args.confidence), None
-
+def detect(image, args, stage):
     detect_censors, detect_with_nudenet = _load_imgutils()
+
+    stage(0.25, "기본 검열 영역 검출 중...")
+    labels = {"pussy", "penis"}
+    if args.include_nipple:
+        labels.add("nipple_f")
+
     detections = [
         (box, label, float(score))
         for box, label, score in detect_censors(image, level="s", conf_threshold=args.confidence)
-        if label in base_labels
+        if label in labels
     ]
-    warning = None
 
-    if args.detector == "auto" and (args.include_anus or args.include_testicles):
-        ntd_labels = set()
-        if args.include_anus:
-            ntd_labels.add("anus")
-        if args.include_testicles:
-            ntd_labels.add("testicles")
-        if model_path.is_file():
-            try:
-                detections.extend(_detect_ntd11(image, model_path, ntd_labels, args.confidence))
-            except RuntimeError as exc:
-                warning = str(exc)
-        elif args.include_anus:
-            try:
-                fallback = detect_with_nudenet(image, score_threshold=args.confidence)
-                detections.extend(
-                    (box, label, float(score))
-                    for box, label, score in fallback
-                    if label in {"ANUS_EXPOSED", "ANUS_COVERED"}
-                )
-                if args.include_testicles:
-                    warning = "NTD11 모델이 없어 testicles 검출은 건너뛰었습니다."
-            except Exception as exc:
-                warning = f"추가 검출 폴백 실패: {exc}"
-        else:
-            warning = "NTD11 모델이 없어 testicles 검출은 건너뛰었습니다."
+    warning = None
+    if args.include_anus or args.include_testicles:
+        stage(0.58, "추가 검출 영역 분석 중...")
+        try:
+            fallback = detect_with_nudenet(image, score_threshold=args.confidence)
+            extra_labels = set()
+            if args.include_anus:
+                extra_labels.update({"ANUS_EXPOSED", "ANUS_COVERED"})
+            if args.include_testicles:
+                # NudeNet does not expose a dedicated testicle class; the male-genitalia
+                # classes are used as the broad safety region after NTD11 removal.
+                extra_labels.update({"MALE_GENITALIA_EXPOSED", "MALE_GENITALIA_COVERED"})
+
+            for box, label, score in fallback:
+                normalized = str(label).upper()
+                if normalized in extra_labels:
+                    detections.append((box, normalized, float(score)))
+        except Exception as exc:
+            warning = f"추가 검출을 완료하지 못했습니다: {exc}"
+
     return detections, warning
 
 
@@ -170,23 +126,37 @@ def save_image(image, output_path: Path):
     image.save(output_path, **kwargs)
 
 
-def process_one(input_path: Path, output_path: Path, args):
+def process_one(input_path: Path, output_path: Path, args, start=5, end=95):
+    span = max(1, end - start)
+
+    def stage(fraction, message):
+        emit_progress(start + int(span * max(0.0, min(1.0, fraction))), message)
+
+    stage(0.02, f"{input_path.name}: 이미지 읽는 중...")
     with Image.open(input_path) as opened:
         image = ImageOps.exif_transpose(opened).copy()
-    detections, warning = detect(image, args)
+
+    detections, warning = detect(image, args, stage)
     if not detections:
+        stage(0.90, f"{input_path.name}: 검출 결과 정리 중...")
         if args.copy_undetected:
             output_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(input_path, output_path)
+        stage(1.0, f"{input_path.name}: 검열 대상 없음")
         return {"status": "undetected", "count": 0, "warning": warning}
+
+    stage(0.72, f"{input_path.name}: {len(detections)}개 영역에 효과 적용 중...")
     areas = [padded_box(box, args.padding, image.width, image.height) for box, _, _ in detections]
     result = apply_effect(image, areas, args.mode, args.strength)
+
+    stage(0.90, f"{input_path.name}: 결과 저장 중...")
     save_image(result, output_path)
+    stage(1.0, f"{input_path.name}: 처리 완료")
     return {"status": "success", "count": len(areas), "warning": warning}
 
 
 def emit(payload, exit_code=0):
-    print(json.dumps(payload, ensure_ascii=False))
+    print(json.dumps(payload, ensure_ascii=False), flush=True)
     raise SystemExit(exit_code)
 
 
@@ -201,7 +171,9 @@ def main():
         if not args.output_file:
             emit({"status": "error", "error": "--input-file에는 --output-file이 필요합니다."}, 2)
         try:
-            result = process_one(args.input_file.resolve(), args.output_file.resolve(), args)
+            emit_progress(2, "자동 검열 준비 중...")
+            result = process_one(args.input_file.resolve(), args.output_file.resolve(), args, 5, 98)
+            emit_progress(100, "처리 완료")
             emit(result)
         except Exception as exc:
             emit({"status": "error", "error": str(exc)}, 1)
@@ -218,11 +190,20 @@ def main():
         (p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS),
         key=lambda p: p.name.lower(),
     )
+    if not files:
+        emit_progress(100, "처리할 이미지가 없습니다.")
+        emit({"status": "success", "count": 0, "processed": 0, "undetected": 0, "errors": 0})
+
     processed = undetected = errors = total_count = 0
     warnings = []
-    for path in files:
+    total = len(files)
+    emit_progress(2, f"일괄 처리 준비: {total}개 파일")
+
+    for index, path in enumerate(files):
+        start = 3 + int(94 * index / total)
+        end = 3 + int(94 * (index + 1) / total)
         try:
-            item = process_one(path, output_dir / path.name, args)
+            item = process_one(path, output_dir / path.name, args, start, end)
             if item["status"] == "success":
                 processed += 1
                 total_count += item["count"]
@@ -234,6 +215,7 @@ def main():
             errors += 1
             print(f"{path.name}: {exc}", file=sys.stderr)
 
+    emit_progress(100, f"일괄 처리 완료: {total}개 파일")
     emit({
         "status": "success" if errors == 0 else "partial",
         "count": total_count,
