@@ -9,7 +9,7 @@ namespace ImageMosaicEditor;
 
 public partial class MainForm
 {
-    private static readonly string[] ImportExtensions = [".png", ".jpg", ".jpeg"];
+    private static readonly string[] ImportExtensions = [".png", ".jpg", ".jpeg", ".webp"];
 
     private void InitializeAutoMosaicMenu()
     {
@@ -63,7 +63,7 @@ public partial class MainForm
         using var dlg = new OpenFileDialog
         {
             Title = "이미지 파일 열기",
-            Filter = "이미지 파일 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|모든 파일 (*.*)|*.*"
+            Filter = "이미지 파일 (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp|모든 파일 (*.*)|*.*"
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
         await ImportAndAutoCensorAsync(dlg.FileName);
@@ -96,8 +96,11 @@ public partial class MainForm
             string? folder = paths.FirstOrDefault(Directory.Exists);
             if (folder != null)
             {
-                stage = "폴더 열기";
-                await OpenFolderAsync(folder, autoOpen: true);
+                stage = "폴더 미리보기 생성";
+                await OpenFolderAsync(folder, autoOpen: false);
+
+                stage = "폴더 전체 자동검열";
+                await RunFolderBatchAsync(folder, openOutputFolder: true);
                 return;
             }
 
@@ -126,8 +129,6 @@ public partial class MainForm
         string stage = "가져오기 준비";
         try
         {
-            // Load the selected image first. A bad sibling thumbnail must never stop
-            // the user from opening a valid image.
             stage = "이미지 디코딩";
             LoadImageDetached(path);
 
@@ -199,7 +200,7 @@ public partial class MainForm
             stage = "임시 PNG 저장";
             SaveBitmapAsPngDetached(_originalBitmap, input);
 
-            stage = "Python 검출/검열";
+            stage = "Python 검출/정밀 마스킹";
             AutoMosaicResult result = await AutoMosaicEngine.ProcessFileAsync(
                 input, output, _autoSettings, progress);
 
@@ -254,12 +255,21 @@ public partial class MainForm
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
 
-        string inputDir = dlg.SelectedPath;
+        await RunFolderBatchAsync(dlg.SelectedPath, openOutputFolder: true);
+    }
+
+    private async Task RunFolderBatchAsync(string inputDir, bool openOutputFolder)
+    {
+        if (_autoBusy) return;
+        if (!Directory.Exists(inputDir))
+            throw new DirectoryNotFoundException(inputDir);
+
+        inputDir = Path.GetFullPath(inputDir);
         string parent = Directory.GetParent(inputDir)?.FullName ?? inputDir;
         string name = new DirectoryInfo(inputDir).Name;
         string outputDir = Path.Combine(parent, name + "_mosaic");
 
-        using var progressWindow = new AutoMosaicProgressForm("폴더 자동 검열 진행");
+        using var progressWindow = new AutoMosaicProgressForm("폴더 전체 자동 검열 진행");
         var progress = new Progress<AutoMosaicProgress>(p =>
         {
             if (!progressWindow.IsDisposed && progressWindow.IsHandleCreated)
@@ -269,7 +279,7 @@ public partial class MainForm
 
         try
         {
-            SetAutoBusy(true, "폴더 일괄 처리 준비 중...");
+            SetAutoBusy(true, "폴더 전체 자동 검열 준비 중...");
             progressWindow.Show(this);
             progressWindow.UpdateProgress(new AutoMosaicProgress(1, "처리할 파일 확인 중..."));
             Directory.CreateDirectory(outputDir);
@@ -277,22 +287,36 @@ public partial class MainForm
             AutoMosaicResult result = await AutoMosaicEngine.ProcessFolderAsync(
                 inputDir, outputDir, _autoSettings, progress);
 
-            statusLabel.Text = $"일괄 처리 완료: 처리 {result.Processed}, 미검출 {result.Undetected}, 오류 {result.Errors}";
+            statusLabel.Text = $"전체 처리 완료: 처리 {result.Processed}, 미검출 {result.Undetected}, 오류 {result.Errors}";
+
+            if (openOutputFolder && Directory.Exists(outputDir))
+            {
+                await OpenFolderAsync(outputDir, autoOpen: false);
+
+                string? firstOutput = Directory.EnumerateFiles(outputDir)
+                    .Where(IsSupportedImportFile)
+                    .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                    .FirstOrDefault();
+
+                if (firstOutput != null)
+                {
+                    LoadImageDetached(firstOutput);
+                    SelectFolderImage(firstOutput);
+                }
+            }
+
             string message = $"출력 폴더:\n{outputDir}\n\n처리: {result.Processed}개\n미검출: {result.Undetected}개\n오류: {result.Errors}개\n검출 영역: {result.Count}개";
             if (!string.IsNullOrWhiteSpace(result.Warning))
                 message += $"\n\n경고: {result.Warning}";
 
-            MessageBox.Show(message, "자동 모자이크 완료",
+            MessageBox.Show(message, "폴더 전체 자동 모자이크 완료",
                 MessageBoxButtons.OK,
                 result.Errors == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-
-            if (string.Equals(_currentFolder, inputDir, StringComparison.OrdinalIgnoreCase))
-                await OpenFolderAsync(inputDir, _currentFilePath, autoOpen: false);
         }
         catch (Exception ex)
         {
-            WriteAutoDiagnostic("폴더 일괄 자동검열", inputDir, ex);
-            ShowAutoError(ex, "폴더 일괄 자동검열");
+            WriteAutoDiagnostic("폴더 전체 자동검열", inputDir, ex);
+            ShowAutoError(ex, "폴더 전체 자동검열");
         }
         finally
         {
