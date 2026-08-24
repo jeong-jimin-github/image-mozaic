@@ -14,7 +14,6 @@ public partial class MainForm
 
     private void InitializeAutoMosaicMenu()
     {
-        // Replace the original Open handler so every imported image is censored immediately.
         menuOpen.Click -= MenuOpen_Click;
         menuOpen.Click += MenuOpenAndAuto_Click;
         InitializeDragDropImport();
@@ -46,7 +45,6 @@ public partial class MainForm
     {
         AllowDrop = true;
         pictureBox.AllowDrop = true;
-
         DragEnter += Import_DragEnter;
         DragDrop += Import_DragDrop;
         pictureBox.DragEnter += Import_DragEnter;
@@ -63,7 +61,6 @@ public partial class MainForm
             Filter = "이미지 파일 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|모든 파일 (*.*)|*.*"
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
-
         await ImportAndAutoCensorAsync(dlg.FileName);
     }
 
@@ -87,7 +84,6 @@ public partial class MainForm
         string[]? files = e.Data.GetData(DataFormats.FileDrop) as string[];
         string? firstImage = files?.FirstOrDefault(IsSupportedImportFile);
         if (firstImage == null) return;
-
         await ImportAndAutoCensorAsync(firstImage);
     }
 
@@ -141,11 +137,22 @@ public partial class MainForm
         string output = Path.Combine(tempDir, "output.png");
         Directory.CreateDirectory(tempDir);
 
+        using var progressWindow = new AutoMosaicProgressForm("자동 검열 진행");
+        var progress = new Progress<AutoMosaicProgress>(p =>
+        {
+            progressWindow.UpdateProgress(p);
+            statusLabel.Text = p.Message;
+        });
+
         try
         {
-            SetAutoBusy(true, "자동 검출 중...");
+            SetAutoBusy(true, "자동 검열 준비 중...");
+            progressWindow.Show(this);
+            progressWindow.UpdateProgress(new AutoMosaicProgress(1, "이미지 준비 중..."));
+
             _originalBitmap.Save(input, ImageFormat.Png);
-            AutoMosaicResult result = await AutoMosaicEngine.ProcessFileAsync(input, output, _autoSettings);
+            AutoMosaicResult result = await AutoMosaicEngine.ProcessFileAsync(
+                input, output, _autoSettings, progress);
 
             if (result.Status == "undetected" || !File.Exists(output))
             {
@@ -175,6 +182,7 @@ public partial class MainForm
         }
         finally
         {
+            if (!progressWindow.IsDisposed) progressWindow.Close();
             SetAutoBusy(false);
             TryDeleteDirectory(tempDir);
         }
@@ -196,16 +204,28 @@ public partial class MainForm
         string name = new DirectoryInfo(inputDir).Name;
         string outputDir = Path.Combine(parent, name + "_mosaic");
 
+        using var progressWindow = new AutoMosaicProgressForm("폴더 자동 검열 진행");
+        var progress = new Progress<AutoMosaicProgress>(p =>
+        {
+            progressWindow.UpdateProgress(p);
+            statusLabel.Text = p.Message;
+        });
+
         try
         {
-            SetAutoBusy(true, "폴더 일괄 처리 중...");
+            SetAutoBusy(true, "폴더 일괄 처리 준비 중...");
+            progressWindow.Show(this);
+            progressWindow.UpdateProgress(new AutoMosaicProgress(1, "처리할 파일 확인 중..."));
             Directory.CreateDirectory(outputDir);
-            AutoMosaicResult result = await AutoMosaicEngine.ProcessFolderAsync(inputDir, outputDir, _autoSettings);
-            statusLabel.Text = $"일괄 처리 완료: 처리 {result.Processed}, 미검출 {result.Undetected}, 오류 {result.Errors}";
 
+            AutoMosaicResult result = await AutoMosaicEngine.ProcessFolderAsync(
+                inputDir, outputDir, _autoSettings, progress);
+
+            statusLabel.Text = $"일괄 처리 완료: 처리 {result.Processed}, 미검출 {result.Undetected}, 오류 {result.Errors}";
             string message = $"출력 폴더:\n{outputDir}\n\n처리: {result.Processed}개\n미검출: {result.Undetected}개\n오류: {result.Errors}개\n검출 영역: {result.Count}개";
             if (!string.IsNullOrWhiteSpace(result.Warning))
                 message += $"\n\n경고: {result.Warning}";
+
             MessageBox.Show(message, "자동 모자이크 완료",
                 MessageBoxButtons.OK,
                 result.Errors == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
@@ -216,6 +236,7 @@ public partial class MainForm
         }
         finally
         {
+            if (!progressWindow.IsDisposed) progressWindow.Close();
             SetAutoBusy(false);
         }
     }
@@ -226,7 +247,10 @@ public partial class MainForm
         if (dlg.ShowDialog(this) == DialogResult.OK)
         {
             _autoSettings = dlg.Settings;
-            statusLabel.Text = $"자동 모자이크 설정: {_autoSettings.Detector} / {_autoSettings.Mode}";
+            int enabled = (_autoSettings.IncludeNipple ? 1 : 0)
+                + (_autoSettings.IncludeAnus ? 1 : 0)
+                + (_autoSettings.IncludeTesticles ? 1 : 0);
+            statusLabel.Text = $"자동 모자이크 설정: {_autoSettings.Mode} / 추가 검출 {enabled}/3";
         }
     }
 
