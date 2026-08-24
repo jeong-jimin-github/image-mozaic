@@ -10,13 +10,9 @@ public partial class MainForm
     private static Bitmap LoadBitmapDetached(string path)
     {
         using FileStream stream = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using Image decoded = Image.FromStream(stream, useEmbeddedColorManagement: true, validateImageData: true);
+        using Image decoded = Image.FromStream(stream, useEmbeddedColorManagement: false, validateImageData: true);
 
         var bitmap = new Bitmap(decoded.Width, decoded.Height, PixelFormat.Format32bppArgb);
-        bitmap.SetResolution(
-            decoded.HorizontalResolution > 0 ? decoded.HorizontalResolution : 96f,
-            decoded.VerticalResolution > 0 ? decoded.VerticalResolution : 96f);
-
         using Graphics g = Graphics.FromImage(bitmap);
         g.DrawImage(decoded, new Rectangle(0, 0, bitmap.Width, bitmap.Height));
         return bitmap;
