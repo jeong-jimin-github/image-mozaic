@@ -32,7 +32,7 @@ public partial class MainForm
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             FixedPanel = FixedPanel.Panel2,
             IsSplitterFixed = false,
-            SplitterWidth = 5
+            SplitterWidth = 8
         };
 
         pictureBox.Dock = DockStyle.Fill;
@@ -49,7 +49,7 @@ public partial class MainForm
             Dock = DockStyle.Fill,
             Margin = new Padding(0),
             Padding = new Padding(10, 0, 8, 0),
-            Text = "폴더를 드래그해 놓으세요.",
+            Text = "이미지 목록  ·  0개",
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true,
             BackColor = SystemColors.Control,
@@ -108,7 +108,7 @@ public partial class MainForm
         _folderLayoutBusy = true;
         try
         {
-            int top = Math.Max(0, menuStrip.Bottom);
+            int top = Math.Max(0, GetModernWorkspaceTop());
             int bottom = statusStrip.Top;
             if (bottom <= top)
                 bottom = Math.Max(top + 1, ClientSize.Height - statusStrip.Height);
@@ -127,7 +127,7 @@ public partial class MainForm
     {
         if (_mainSplit == null || _mainSplit.IsDisposed || _mainSplit.Width <= 0) return;
 
-        int sidebarWidth = Math.Clamp((int)(_mainSplit.Width * 0.30), 240, 330);
+        int sidebarWidth = Math.Clamp((int)(_mainSplit.Width * 0.27), 270, 350);
         int distance = _mainSplit.Width - sidebarWidth - _mainSplit.SplitterWidth;
         int maxDistance = Math.Max(80, _mainSplit.Width - _mainSplit.SplitterWidth - 80);
         distance = Math.Clamp(distance, 80, maxDistance);
@@ -195,7 +195,8 @@ public partial class MainForm
             _folderListUpdating = false;
         }
 
-        _folderHeader.Text = $"{new DirectoryInfo(folder).Name}  ·  {_folderList.Items.Count}개 이미지";
+        string folderName = new DirectoryInfo(folder).Name;
+        _folderHeader.Text = $"이미지 목록  ·  {_folderList.Items.Count}개   |   {folderName}";
 
         string? target = preferredImage;
         if (target == null || !files.Contains(target, StringComparer.OrdinalIgnoreCase))
@@ -256,8 +257,6 @@ public partial class MainForm
         {
             if (IsBatchOutputPath(path))
             {
-                // Batch results are already processed. Merely display them and keep
-                // the matching source file available for clean reprocessing/eraser.
                 LoadImageDetached(path, ResolveSourcePathForWorkingFile(path));
                 SelectFolderImage(path);
                 statusLabel.Text = "일괄 처리 결과 이미지 - Ctrl+E로 잘못 처리된 마스크를 지울 수 있습니다.";
@@ -279,7 +278,7 @@ public partial class MainForm
         var thumb = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppArgb);
 
         using Graphics g = Graphics.FromImage(thumb);
-        g.Clear(Color.FromArgb(36, 36, 36));
+        g.Clear(Color.FromArgb(248, 250, 253));
         g.CompositingQuality = CompositingQuality.HighQuality;
         g.InterpolationMode = InterpolationMode.HighQualityBicubic;
         g.SmoothingMode = SmoothingMode.HighQuality;
