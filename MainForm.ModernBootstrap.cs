@@ -8,6 +8,7 @@ public partial class MainForm
     {
         base.OnLoad(e);
         InitializeModernUi();
+        ApplyRibbonIconFixes();
         StartModernStatusSync();
     }
 }
