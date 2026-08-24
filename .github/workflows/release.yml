@@ -2,6 +2,8 @@ name: .NET Core Build and Release
 
 on:
   push:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -30,16 +32,20 @@ jobs:
     - name: Publish self-contained application
       run: dotnet publish ImageMosaicEditor.csproj -c Release -r win-x64 --self-contained true -o ./publish
 
-    - name: Bundle Python runtime and AI dependencies
+    - name: Bundle Python runtime and required AI dependencies
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
         $pythonVersion = '3.12.10'
-        $runtimeDir = Join-Path $PWD 'publish/python-runtime'
+        $runtimeDir = Join-Path $env:RUNNER_TEMP 'image-mozaic-python-runtime'
         $sitePackages = Join-Path $runtimeDir 'Lib/site-packages'
         $embedZip = Join-Path $env:RUNNER_TEMP 'python-embed-amd64.zip'
+        $publishRuntime = Join-Path $PWD 'publish/python-runtime'
 
+        Remove-Item $runtimeDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $publishRuntime -Recurse -Force -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+
         Invoke-WebRequest `
           -Uri "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip" `
           -OutFile $embedZip
@@ -47,12 +53,18 @@ jobs:
 
         $pthFile = Get-ChildItem $runtimeDir -Filter 'python*._pth' | Select-Object -First 1
         if (-not $pthFile) { throw 'Embedded Python _pth file was not found.' }
+
         $pth = Get-Content $pthFile.FullName
-        $pth = $pth | ForEach-Object { if ($_ -eq '#import site') { 'import site' } else { $_ } }
-        $pth += 'Lib\site-packages'
+        $pth = $pth | ForEach-Object {
+          if ($_.Trim() -eq '#import site') { 'import site' } else { $_ }
+        }
+        if ($pth -notcontains 'Lib\site-packages') {
+          $pth += 'Lib\site-packages'
+        }
         Set-Content -Path $pthFile.FullName -Value $pth -Encoding ascii
 
         New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
+        python -m pip install --upgrade pip
         python -m pip install --disable-pip-version-check --no-cache-dir `
           -r ./python/requirements.txt `
           --target $sitePackages
@@ -62,28 +74,33 @@ jobs:
 
         $env:PYTHONUTF8 = '1'
         $env:PYTHONNOUSERSITE = '1'
-        & (Join-Path $runtimeDir 'python.exe') -c "from PIL import Image; from imgutils.detect import detect_censors; import ultralytics; print('Bundled Python dependencies OK')"
+        & (Join-Path $runtimeDir 'python.exe') -c "from PIL import Image; from imgutils.detect import detect_censors; print('Bundled Python dependencies OK')"
         if ($LASTEXITCODE -ne 0) { throw 'Bundled Python dependency smoke test failed.' }
+
+        Copy-Item -Path $runtimeDir -Destination $publishRuntime -Recurse -Force
+
+    - name: Verify portable release layout
+      shell: pwsh
+      run: |
+        if (-not (Test-Path './publish/ImageMosaicEditor.exe')) { throw 'ImageMosaicEditor.exe is missing.' }
+        if (-not (Test-Path './publish/python-runtime/python.exe')) { throw 'Bundled python.exe is missing.' }
+        if (-not (Test-Path './publish/python/auto_mosaic_bridge.py')) { throw 'auto_mosaic_bridge.py is missing.' }
 
     - name: Zip Artifact
       shell: pwsh
       run: |
-        Compress-Archive -Path ./publish/* -DestinationPath ImageMosaicEditor-win-x64.zip
+        Compress-Archive -Path ./publish/* -DestinationPath ImageMosaicEditor-win-x64.zip -CompressionLevel Optimal
 
     - name: Determine or create tag
       id: tag
       shell: bash
       run: |
-        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-          echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-        else
-          TAG="v$(date -u +'%Y.%m.%d').${{ github.run_number }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "$TAG"
-          git push origin "$TAG"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-        fi
+        TAG="v$(date -u +'%Y.%m.%d').${{ github.run_number }}"
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag "$TAG"
+        git push origin "$TAG"
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

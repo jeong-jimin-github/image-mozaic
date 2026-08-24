@@ -24,18 +24,17 @@ PNG/JPG 이미지를 직접 드래그해 모자이크 처리할 수 있는 .NET 
 
 ## Release ZIP
 
-GitHub Release의 `ImageMosaicEditor-win-x64.zip`은 가능한 한 별도 설치 없이 실행할 수 있도록 다음을 함께 포함합니다.
+GitHub Release의 `ImageMosaicEditor-win-x64.zip`은 기본 자동 검열을 별도 설치 없이 실행할 수 있도록 다음을 함께 포함합니다.
 
 - Windows x64용 self-contained .NET 8 런타임
 - Python 3.12 임베디드 런타임
 - `dghs-imgutils==0.19.0`
 - `Pillow`
-- `ultralytics` 및 그 Python 의존성
 - 자동 검출 Python 브리지
 
-따라서 Release ZIP 사용자는 .NET SDK/Runtime이나 Python, pip 패키지를 따로 설치할 필요가 없습니다. 개발 환경에서 `dotnet run`으로 실행할 때만 시스템 Python을 폴백으로 사용할 수 있습니다.
+따라서 기본 `auto` / `imgutils` 검출을 사용할 때 .NET Runtime, Python, pip 패키지를 따로 설치할 필요가 없습니다. 앱은 ZIP 내부 `python-runtime/python.exe`를 우선 사용하고, 개발 환경에서는 시스템 Python으로 폴백할 수 있습니다.
 
-`dghs-imgutils`의 검출 모델 파일은 라이브러리 동작에 따라 최초 사용 시 다운로드될 수 있습니다. NTD11의 `.pt` 모델은 모델 제공자의 재배포 조건 때문에 ZIP에 넣지 않으며, NTD11을 사용할 경우 사용자가 모델 파일만 별도로 지정해야 합니다.
+`dghs-imgutils`의 검출 모델 파일은 라이브러리 동작에 따라 최초 사용 시 다운로드될 수 있습니다. NTD11의 `.pt` 모델 및 `ultralytics/torch` 계열은 선택 기능이며 Release 빌드의 필수 의존성에서 제외합니다. NTD11 기능이 필요한 경우 해당 모델과 Python 의존성을 별도로 준비해야 합니다.
 
 ## 사용 방법
 
@@ -58,7 +57,7 @@ PNG/JPG/JPEG 파일을 프로그램 창이나 이미지 영역으로 끌어 놓�
 
 | 설정 | 기본값 | 설명 |
 |------|--------|------|
-| Detector | `auto` | imgutils 기본, 추가 부위가 필요하고 NTD11 모델이 있으면 NTD11 보조 사용 |
+| Detector | `auto` | imgutils 기본, 추가 부위가 필요하고 NTD11 환경이 준비돼 있으면 NTD11 보조 사용 |
 | Mode | `mosaic` | `mosaic`, `black`, `blur` |
 | Strength | `20` | 모자이크 블록 크기 또는 블러 반경 |
 | Confidence | `0.25` | 낮을수록 검출이 늘지만 오검출 가능성도 증가 |
@@ -70,8 +69,8 @@ PNG/JPG/JPEG 파일을 프로그램 창이나 이미지 영역으로 끌어 놓�
 ### Detector
 
 - `auto`: imgutils를 기본 사용하고 필요 시 NTD11을 보조로 사용합니다.
-- `imgutils`: `dghs-imgutils`만 사용합니다.
-- `ntd11`: NTD11 YOLO 모델을 사용합니다. `ultralytics`는 Release ZIP에 이미 포함되어 있으므로 `.pt` 모델만 지정하면 됩니다.
+- `imgutils`: `dghs-imgutils`만 사용합니다. Release ZIP만으로 동작합니다.
+- `ntd11`: NTD11 YOLO 모델을 사용합니다. 선택 기능이므로 `.pt` 모델과 `ultralytics` 환경이 별도로 필요합니다.
 
 ## NTD11 모델
 
@@ -79,6 +78,8 @@ NTD11을 사용할 경우 원본 `anime-mosaic` 프로젝트가 안내하는 **A
 
 - `python/models/ntd11_anime_nsfw_segm_v5.pt`에 두거나
 - **자동 모자이크 > 설정**에서 임의의 `.pt` 경로를 지정합니다.
+
+개발 환경에서는 Python 3.10~3.13에 `ultralytics`를 설치해 사용할 수 있습니다. portable Release의 번들 Python에 NTD11을 추가하려면 같은 버전용 `ultralytics` 및 의존성을 `python-runtime/Lib/site-packages`에 별도로 배치해야 합니다.
 
 모델 파일의 사용/재배포 조건은 모델 제공 페이지의 라이선스를 따르세요.
 
@@ -94,7 +95,7 @@ dotnet run
 dotnet publish ImageMosaicEditor.csproj -c Release -r win-x64 --self-contained true -o publish
 ```
 
-완전한 portable Python 의존성 번들은 GitHub Actions의 Release workflow에서 생성합니다.
+완전한 portable 기본 자동검열 의존성 번들은 GitHub Actions의 Release workflow에서 생성합니다.
 
 ## 프로젝트 구조
 
@@ -122,5 +123,5 @@ ImageMosaicEditor/
 
 - `dghs-imgutils`: MIT License
 - `Pillow`: Pillow License
-- `ultralytics`: 배포되는 버전의 라이선스 조건을 확인하세요.
+- `ultralytics`: NTD11 선택 기능에서만 사용하며 해당 버전의 라이선스 조건을 확인하세요.
 - NTD11 모델: 모델 제공 페이지의 별도 라이선스/이용 조건을 따릅니다.
