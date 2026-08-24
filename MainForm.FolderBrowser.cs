@@ -96,10 +96,6 @@ public partial class MainForm
         _folderThumbnails = thumbnails;
         _folderHeader = header;
 
-        // Do not rely on Dock=Fill here. The form's existing MenuStrip and
-        // StatusStrip can overlay a dynamically-added Fill control depending on
-        // z-order/DPI. Explicit bounds guarantee that the folder header always
-        // begins below the menu and ends above the status bar.
         Shown += (_, _) => LayoutFolderWorkspace();
         SizeChanged += (_, _) => LayoutFolderWorkspace();
         Layout += (_, _) => LayoutFolderWorkspace();
@@ -258,7 +254,18 @@ public partial class MainForm
         _folderSelectionBusy = true;
         try
         {
-            await ImportAndAutoCensorAsync(path, refreshFolderPreview: false);
+            if (IsBatchOutputPath(path))
+            {
+                // Batch results are already processed. Merely display them and keep
+                // the matching source file available for clean reprocessing/eraser.
+                LoadImageDetached(path, ResolveSourcePathForWorkingFile(path));
+                SelectFolderImage(path);
+                statusLabel.Text = "일괄 처리 결과 이미지 - Ctrl+E로 잘못 처리된 마스크를 지울 수 있습니다.";
+            }
+            else
+            {
+                await ImportAndAutoCensorAsync(path, refreshFolderPreview: false);
+            }
         }
         finally
         {
