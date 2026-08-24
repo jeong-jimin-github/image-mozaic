@@ -45,10 +45,30 @@ def _load_imgutils():
         raise RuntimeError("자동 검출 의존성을 불러오지 못했습니다. Release 파일이 손상되었을 수 있습니다.") from exc
 
 
+def get_runtime_provider_label():
+    """Return the provider imgutils itself will use.
+
+    imgutils.get_onnx_provider() honors ONNX_MODE and otherwise automatically
+    selects CUDAExecutionProvider when the GPU runtime is available, falling
+    back to CPUExecutionProvider when CUDA cannot be used.
+    """
+    try:
+        from imgutils.utils.onnxruntime import get_onnx_provider
+        provider = str(get_onnx_provider())
+    except Exception:
+        provider = "CPUExecutionProvider"
+
+    if provider == "CUDAExecutionProvider":
+        return "GPU (CUDA)"
+    if provider == "CPUExecutionProvider":
+        return "CPU"
+    return provider
+
+
 def detect(image, args, stage):
     detect_censors, detect_with_nudenet = _load_imgutils()
 
-    stage(0.25, "기본 검열 영역 검출 중...")
+    stage(0.25, f"기본 검열 영역 검출 중... · {args.provider}")
     labels = {"pussy", "penis"}
     if args.include_nipple:
         labels.add("nipple_f")
@@ -61,7 +81,7 @@ def detect(image, args, stage):
 
     warning = None
     if args.include_anus or args.include_testicles:
-        stage(0.58, "추가 검출 영역 분석 중...")
+        stage(0.58, f"추가 검출 영역 분석 중... · {args.provider}")
         try:
             fallback = detect_with_nudenet(image, score_threshold=args.confidence)
             extra_labels = set()
@@ -103,13 +123,7 @@ def _rect_fallback_mask(size, relative_rect):
 
 
 def build_precise_region_mask(image, context_box, detection_box):
-    """Segment the actual detected pixels instead of drawing a circle/ellipse.
-
-    The detector only provides a bounding box. We use that box as GrabCut's
-    foreground hint and the padded surroundings as background context. Pixels
-    outside the detector box are forced to background, so the censor effect is
-    limited to the segmented anatomy rather than the surrounding rectangle.
-    """
+    """Segment actual foreground pixels inside the detector hint box."""
     cx0, cy0, cx1, cy1 = context_box
     dx0, dy0, dx1, dy1 = detection_box
     crop = image.crop(context_box).convert("RGB")
@@ -123,7 +137,6 @@ def build_precise_region_mask(image, context_box, detection_box):
     rx1 = max(rx0 + 1, min(width, dx1 - cx0))
     ry1 = max(ry0 + 1, min(height, dy1 - cy0))
 
-    # GrabCut requires a rectangle that stays inside the image bounds.
     gx = max(1, min(width - 2, rx0)) if width > 2 else 0
     gy = max(1, min(height - 2, ry0)) if height > 2 else 0
     gr = max(gx + 1, min(width - 1, rx1))
@@ -156,13 +169,10 @@ def build_precise_region_mask(image, context_box, detection_box):
             0,
         ).astype(np.uint8)
 
-        # Never let GrabCut spread outside the detector's original bounding box.
         bounds = np.zeros_like(binary)
         bounds[ry0:ry1, rx0:rx1] = 255
         binary = cv2.bitwise_and(binary, bounds)
 
-        # Remove isolated specks and close tiny gaps without turning the result
-        # back into a generic ellipse/rectangle.
         min_side = max(1, min(rx1 - rx0, ry1 - ry0))
         kernel_size = 3 if min_side < 80 else 5
         kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
@@ -190,7 +200,10 @@ def apply_effect(image, detections, mode, strength, padding):
         if x1 <= x0 or y1 <= y0:
             continue
 
-        crop = result.crop(context_box)
+        # Always sample the effect from the untouched source image crop, not from
+        # a previously modified result. Overlapping detections therefore do not
+        # repeatedly pixelate already pixelated data inside this fresh run.
+        crop = image.crop(context_box)
         if min(crop.size) < 4:
             continue
 
@@ -231,7 +244,7 @@ def process_one(input_path: Path, output_path: Path, args, start=5, end=95):
     def stage(fraction, message):
         emit_progress(start + int(span * max(0.0, min(1.0, fraction))), message)
 
-    stage(0.02, f"{input_path.name}: 이미지 읽는 중...")
+    stage(0.02, f"{input_path.name}: 이미지 읽는 중... · {args.provider}")
     with Image.open(input_path) as opened:
         image = ImageOps.exif_transpose(opened).copy()
 
@@ -242,7 +255,7 @@ def process_one(input_path: Path, output_path: Path, args, start=5, end=95):
             output_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(input_path, output_path)
         stage(1.0, f"{input_path.name}: 검열 대상 없음")
-        return {"status": "undetected", "count": 0, "warning": warning}
+        return {"status": "undetected", "count": 0, "provider": args.provider, "warning": warning}
 
     stage(0.72, f"{input_path.name}: {len(detections)}개 부위 픽셀 경계 분리 중...")
     result = apply_effect(image, detections, args.mode, args.strength, args.padding)
@@ -250,7 +263,7 @@ def process_one(input_path: Path, output_path: Path, args, start=5, end=95):
     stage(0.90, f"{input_path.name}: 결과 저장 중...")
     save_image(result, output_path)
     stage(1.0, f"{input_path.name}: 처리 완료")
-    return {"status": "success", "count": len(detections), "warning": warning}
+    return {"status": "success", "count": len(detections), "provider": args.provider, "warning": warning}
 
 
 def emit(payload, exit_code=0):
@@ -265,16 +278,18 @@ def main():
     if args.padding < 0 or args.strength < 1:
         emit({"status": "error", "error": "padding은 0 이상, strength는 1 이상이어야 합니다."}, 2)
 
+    args.provider = get_runtime_provider_label()
+    emit_progress(1, f"AI 실행 장치: {args.provider}")
+
     if args.input_file:
         if not args.output_file:
             emit({"status": "error", "error": "--input-file에는 --output-file이 필요합니다."}, 2)
         try:
-            emit_progress(2, "자동 검열 준비 중...")
             result = process_one(args.input_file.resolve(), args.output_file.resolve(), args, 5, 98)
-            emit_progress(100, "처리 완료")
+            emit_progress(100, f"처리 완료 · {args.provider}")
             emit(result)
         except Exception as exc:
-            emit({"status": "error", "error": str(exc)}, 1)
+            emit({"status": "error", "provider": args.provider, "error": str(exc)}, 1)
 
     if not args.output_dir:
         emit({"status": "error", "error": "--input-dir에는 --output-dir이 필요합니다."}, 2)
@@ -290,12 +305,12 @@ def main():
     )
     if not files:
         emit_progress(100, "처리할 이미지가 없습니다.")
-        emit({"status": "success", "count": 0, "processed": 0, "undetected": 0, "errors": 0})
+        emit({"status": "success", "provider": args.provider, "count": 0, "processed": 0, "undetected": 0, "errors": 0})
 
     processed = undetected = errors = total_count = 0
     warnings = []
     total = len(files)
-    emit_progress(2, f"일괄 처리 준비: {total}개 파일")
+    emit_progress(2, f"일괄 처리 준비: {total}개 파일 · {args.provider}")
 
     for index, path in enumerate(files):
         start = 3 + int(94 * index / total)
@@ -313,9 +328,10 @@ def main():
             errors += 1
             print(f"{path.name}: {exc}", file=sys.stderr)
 
-    emit_progress(100, f"일괄 처리 완료: {total}개 파일")
+    emit_progress(100, f"일괄 처리 완료: {total}개 파일 · {args.provider}")
     emit({
         "status": "success" if errors == 0 else "partial",
+        "provider": args.provider,
         "count": total_count,
         "processed": processed,
         "undetected": undetected,
