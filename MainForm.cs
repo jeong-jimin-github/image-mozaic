@@ -37,7 +37,7 @@ namespace ImageMosaicEditor
         }
 
         // ── File > Open ──────────────────────────────────────────────────────────
-        private void MenuOpen_Click(object sender, EventArgs e)
+        private void MenuOpen_Click(object? sender, EventArgs e)
         {
             using var dlg = new OpenFileDialog
             {
@@ -51,7 +51,7 @@ namespace ImageMosaicEditor
         }
 
         // ── File > Save ──────────────────────────────────────────────────────────
-        private void MenuSave_Click(object sender, EventArgs e)
+        private void MenuSave_Click(object? sender, EventArgs e)
         {
             if (_originalBitmap == null || string.IsNullOrEmpty(_currentFilePath))
             {
@@ -64,13 +64,13 @@ namespace ImageMosaicEditor
         }
 
         // ── Edit > Undo ──────────────────────────────────────────────────────────
-        private void MenuUndo_Click(object sender, EventArgs e)
+        private void MenuUndo_Click(object? sender, EventArgs e)
         {
             Undo();
         }
 
         // ── Edit > Redo ──────────────────────────────────────────────────────────
-        private void MenuRedo_Click(object sender, EventArgs e)
+        private void MenuRedo_Click(object? sender, EventArgs e)
         {
             Redo();
         }
@@ -220,7 +220,7 @@ namespace ImageMosaicEditor
         }
 
         // ── Mouse events for drag-select ─────────────────────────────────────────
-        private void PictureBox_MouseDown(object sender, MouseEventArgs e)
+        private void PictureBox_MouseDown(object? sender, MouseEventArgs e)
         {
             if (_originalBitmap == null) return;
             _isDragging = true;
@@ -229,7 +229,7 @@ namespace ImageMosaicEditor
             _selectionRect = Rectangle.Empty;
         }
 
-        private void PictureBox_MouseMove(object sender, MouseEventArgs e)
+        private void PictureBox_MouseMove(object? sender, MouseEventArgs e)
         {
             if (!_isDragging) return;
             _dragEnd = e.Location;
@@ -237,7 +237,7 @@ namespace ImageMosaicEditor
             pictureBox.Invalidate(); // Trigger Paint to draw the selection rectangle
         }
 
-        private void PictureBox_MouseUp(object sender, MouseEventArgs e)
+        private void PictureBox_MouseUp(object? sender, MouseEventArgs e)
         {
             if (!_isDragging) return;
             _isDragging = false;
@@ -251,7 +251,7 @@ namespace ImageMosaicEditor
         }
 
         // ── Paint: draw the dotted selection rectangle while dragging ─────────────
-        private void PictureBox_Paint(object sender, PaintEventArgs e)
+        private void PictureBox_Paint(object? sender, PaintEventArgs e)
         {
             if (_isDragging && _selectionRect.Width > 0 && _selectionRect.Height > 0)
             {
