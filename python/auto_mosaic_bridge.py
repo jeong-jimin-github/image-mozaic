@@ -46,13 +46,20 @@ def _load_imgutils():
 
 
 def get_runtime_provider_label():
-    """Return the provider imgutils itself will use.
-
-    imgutils.get_onnx_provider() honors ONNX_MODE and otherwise automatically
-    selects CUDAExecutionProvider when the GPU runtime is available, falling
-    back to CPUExecutionProvider when CUDA cannot be used.
-    """
+    """Preload bundled CUDA/cuDNN DLLs and report imgutils' real provider."""
     try:
+        import onnxruntime as ort
+        if hasattr(ort, "preload_dlls"):
+            try:
+                # Empty string explicitly searches NVIDIA pip site-packages bundled
+                # in the portable runtime (nvidia-cuda-runtime / nvidia-cudnn).
+                ort.preload_dlls(directory="")
+            except Exception:
+                try:
+                    ort.preload_dlls()
+                except Exception:
+                    pass
+
         from imgutils.utils.onnxruntime import get_onnx_provider
         provider = str(get_onnx_provider())
     except Exception:
@@ -200,9 +207,6 @@ def apply_effect(image, detections, mode, strength, padding):
         if x1 <= x0 or y1 <= y0:
             continue
 
-        # Always sample the effect from the untouched source image crop, not from
-        # a previously modified result. Overlapping detections therefore do not
-        # repeatedly pixelate already pixelated data inside this fresh run.
         crop = image.crop(context_box)
         if min(crop.size) < 4:
             continue
