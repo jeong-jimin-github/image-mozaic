@@ -6,7 +6,9 @@ import shutil
 import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageOps
+import cv2
+import numpy as np
+from PIL import Image, ImageFilter, ImageOps
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -88,48 +90,112 @@ def padded_box(box, padding, width, height):
     )
 
 
-def build_region_mask(size, label: str):
-    """Create a non-rectangular mask centered on the detected anatomy.
-
-    The detectors return bounding boxes, not segmentation masks. Instead of
-    censoring every corner of that box, use an anatomy-shaped mask so pixels
-    outside the detected part remain untouched.
-    """
+def _rect_fallback_mask(size, relative_rect):
     width, height = size
-    mask = Image.new("L", size, 0)
-    draw = ImageDraw.Draw(mask)
+    x, y, w, h = relative_rect
+    mask = np.zeros((height, width), dtype=np.uint8)
+    x0 = max(0, min(width, x))
+    y0 = max(0, min(height, y))
+    x1 = max(x0, min(width, x + w))
+    y1 = max(y0, min(height, y + h))
+    mask[y0:y1, x0:x1] = 255
+    return Image.fromarray(mask, mode="L")
 
-    inset = max(1, int(min(width, height) * 0.04))
-    bounds = (inset, inset, max(inset + 1, width - inset - 1), max(inset + 1, height - inset - 1))
-    normalized = str(label).lower()
 
-    if "penis" in normalized or "male_genitalia" in normalized:
-        radius = max(2, min(width, height) // 2)
-        draw.rounded_rectangle(bounds, radius=radius, fill=255)
-    else:
-        draw.ellipse(bounds, fill=255)
+def build_precise_region_mask(image, context_box, detection_box):
+    """Segment the actual detected pixels instead of drawing a circle/ellipse.
 
-    feather = max(1, int(min(width, height) * 0.035))
-    if feather > 1:
-        mask = mask.filter(ImageFilter.GaussianBlur(radius=feather))
-    return mask
+    The detector only provides a bounding box. We use that box as GrabCut's
+    foreground hint and the padded surroundings as background context. Pixels
+    outside the detector box are forced to background, so the censor effect is
+    limited to the segmented anatomy rather than the surrounding rectangle.
+    """
+    cx0, cy0, cx1, cy1 = context_box
+    dx0, dy0, dx1, dy1 = detection_box
+    crop = image.crop(context_box).convert("RGB")
+    width, height = crop.size
+
+    if width < 3 or height < 3:
+        return Image.new("L", crop.size, 255)
+
+    rx0 = max(0, min(width - 1, dx0 - cx0))
+    ry0 = max(0, min(height - 1, dy0 - cy0))
+    rx1 = max(rx0 + 1, min(width, dx1 - cx0))
+    ry1 = max(ry0 + 1, min(height, dy1 - cy0))
+
+    # GrabCut requires a rectangle that stays inside the image bounds.
+    gx = max(1, min(width - 2, rx0)) if width > 2 else 0
+    gy = max(1, min(height - 2, ry0)) if height > 2 else 0
+    gr = max(gx + 1, min(width - 1, rx1))
+    gb = max(gy + 1, min(height - 1, ry1))
+    gw = gr - gx
+    gh = gb - gy
+
+    if gw < 2 or gh < 2:
+        return _rect_fallback_mask(crop.size, (rx0, ry0, rx1 - rx0, ry1 - ry0))
+
+    rgb = np.asarray(crop, dtype=np.uint8)
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    grab_mask = np.zeros((height, width), dtype=np.uint8)
+    bg_model = np.zeros((1, 65), dtype=np.float64)
+    fg_model = np.zeros((1, 65), dtype=np.float64)
+
+    try:
+        cv2.grabCut(
+            bgr,
+            grab_mask,
+            (gx, gy, gw, gh),
+            bg_model,
+            fg_model,
+            5,
+            cv2.GC_INIT_WITH_RECT,
+        )
+        binary = np.where(
+            (grab_mask == cv2.GC_FGD) | (grab_mask == cv2.GC_PR_FGD),
+            255,
+            0,
+        ).astype(np.uint8)
+
+        # Never let GrabCut spread outside the detector's original bounding box.
+        bounds = np.zeros_like(binary)
+        bounds[ry0:ry1, rx0:rx1] = 255
+        binary = cv2.bitwise_and(binary, bounds)
+
+        # Remove isolated specks and close tiny gaps without turning the result
+        # back into a generic ellipse/rectangle.
+        min_side = max(1, min(rx1 - rx0, ry1 - ry0))
+        kernel_size = 3 if min_side < 80 else 5
+        kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=1)
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
+
+        detector_area = max(1, (rx1 - rx0) * (ry1 - ry0))
+        foreground_area = int(np.count_nonzero(binary))
+        if foreground_area < max(8, int(detector_area * 0.02)):
+            return _rect_fallback_mask(crop.size, (rx0, ry0, rx1 - rx0, ry1 - ry0))
+
+        return Image.fromarray(binary, mode="L")
+    except cv2.error:
+        return _rect_fallback_mask(crop.size, (rx0, ry0, rx1 - rx0, ry1 - ry0))
 
 
 def apply_effect(image, detections, mode, strength, padding):
     result = image.copy()
 
-    for box, label, _score in detections:
-        x0, y0, x1, y1 = padded_box(box, padding, image.width, image.height)
+    for box, _label, _score in detections:
+        detection_box = padded_box(box, 0, image.width, image.height)
+        context_padding = max(8, padding)
+        context_box = padded_box(box, context_padding, image.width, image.height)
+        x0, y0, x1, y1 = context_box
         if x1 <= x0 or y1 <= y0:
             continue
 
-        crop = result.crop((x0, y0, x1, y1))
+        crop = result.crop(context_box)
         if min(crop.size) < 4:
             continue
 
         if mode == "black":
-            effected = crop.copy()
-            ImageDraw.Draw(effected).rectangle((0, 0, crop.width, crop.height), fill="black")
+            effected = Image.new(crop.mode, crop.size, "black")
         elif mode == "blur":
             effected = crop.filter(ImageFilter.GaussianBlur(radius=max(1, strength)))
         else:
@@ -140,7 +206,7 @@ def apply_effect(image, detections, mode, strength, padding):
             )
             effected = small.resize(crop.size, Image.Resampling.NEAREST)
 
-        mask = build_region_mask(crop.size, label)
+        mask = build_precise_region_mask(image, context_box, detection_box)
         result.paste(effected, (x0, y0), mask)
 
     return result
@@ -178,7 +244,7 @@ def process_one(input_path: Path, output_path: Path, args, start=5, end=95):
         stage(1.0, f"{input_path.name}: 검열 대상 없음")
         return {"status": "undetected", "count": 0, "warning": warning}
 
-    stage(0.72, f"{input_path.name}: {len(detections)}개 검출 부위에 마스크 적용 중...")
+    stage(0.72, f"{input_path.name}: {len(detections)}개 부위 픽셀 경계 분리 중...")
     result = apply_effect(image, detections, args.mode, args.strength, args.padding)
 
     stage(0.90, f"{input_path.name}: 결과 저장 중...")
