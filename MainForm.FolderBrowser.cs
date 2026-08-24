@@ -24,13 +24,15 @@ public partial class MainForm
 
         Controls.Remove(pictureBox);
 
+        // Do not set Panel1MinSize / Panel2MinSize here. A newly-created
+        // SplitContainer still has its tiny default size, and assigning minimum
+        // panel sizes larger than that can throw ArgumentOutOfRangeException
+        // before the form is ever displayed.
         var split = new SplitContainer
         {
             Dock = DockStyle.Fill,
             FixedPanel = FixedPanel.Panel2,
             IsSplitterFixed = false,
-            Panel1MinSize = 360,
-            Panel2MinSize = 220,
             SplitterWidth = 5
         };
 
@@ -77,14 +79,52 @@ public partial class MainForm
         Controls.SetChildIndex(statusStrip, 1);
         Controls.SetChildIndex(split, 2);
 
-        int desired = Math.Max(split.Panel1MinSize, ClientSize.Width - 270);
-        int maximum = Math.Max(split.Panel1MinSize, ClientSize.Width - split.Panel2MinSize - split.SplitterWidth);
-        split.SplitterDistance = Math.Min(desired, maximum);
-
         _mainSplit = split;
         _folderList = list;
         _folderThumbnails = thumbnails;
         _folderHeader = header;
+
+        // SplitterDistance must be set only after WinForms has calculated the
+        // actual docked size. This avoids a startup exception on portable builds,
+        // high-DPI displays, and unusually small initial window sizes.
+        Shown += (_, _) => ConfigureFolderSplitter();
+        Resize += (_, _) => KeepFolderSplitterValid();
+    }
+
+    private void ConfigureFolderSplitter()
+    {
+        if (_mainSplit == null || _mainSplit.IsDisposed) return;
+
+        int width = _mainSplit.ClientSize.Width;
+        if (width <= _mainSplit.SplitterWidth + 80) return;
+
+        int desiredRight = Math.Clamp(270, 180, Math.Max(180, width / 2));
+        int distance = width - desiredRight - _mainSplit.SplitterWidth;
+        distance = Math.Clamp(distance, 80, Math.Max(80, width - _mainSplit.SplitterWidth - 80));
+
+        try
+        {
+            _mainSplit.SplitterDistance = distance;
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            // Layout may still be settling on the first DPI/layout pass.
+            BeginInvoke(new Action(KeepFolderSplitterValid));
+        }
+    }
+
+    private void KeepFolderSplitterValid()
+    {
+        if (_mainSplit == null || _mainSplit.IsDisposed) return;
+
+        int width = _mainSplit.ClientSize.Width;
+        int maxDistance = width - _mainSplit.SplitterWidth - 80;
+        if (maxDistance < 80) return;
+
+        if (_mainSplit.SplitterDistance < 80)
+            _mainSplit.SplitterDistance = 80;
+        else if (_mainSplit.SplitterDistance > maxDistance)
+            _mainSplit.SplitterDistance = maxDistance;
     }
 
     private async Task OpenFolderAsync(string folder, string? preferredImage = null, bool autoOpen = true)
