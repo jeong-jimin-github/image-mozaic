@@ -66,8 +66,6 @@ def detect(image, args, stage):
             if args.include_anus:
                 extra_labels.update({"ANUS_EXPOSED", "ANUS_COVERED"})
             if args.include_testicles:
-                # NudeNet does not expose a dedicated testicle class; the male-genitalia
-                # classes are used as the broad safety region after NTD11 removal.
                 extra_labels.update({"MALE_GENITALIA_EXPOSED", "MALE_GENITALIA_COVERED"})
 
             for box, label, score in fallback:
@@ -90,26 +88,61 @@ def padded_box(box, padding, width, height):
     )
 
 
-def apply_effect(image, areas, mode, strength):
+def build_region_mask(size, label: str):
+    """Create a non-rectangular mask centered on the detected anatomy.
+
+    The detectors return bounding boxes, not segmentation masks. Instead of
+    censoring every corner of that box, use an anatomy-shaped mask so pixels
+    outside the detected part remain untouched.
+    """
+    width, height = size
+    mask = Image.new("L", size, 0)
+    draw = ImageDraw.Draw(mask)
+
+    inset = max(1, int(min(width, height) * 0.04))
+    bounds = (inset, inset, max(inset + 1, width - inset - 1), max(inset + 1, height - inset - 1))
+    normalized = str(label).lower()
+
+    if "penis" in normalized or "male_genitalia" in normalized:
+        radius = max(2, min(width, height) // 2)
+        draw.rounded_rectangle(bounds, radius=radius, fill=255)
+    else:
+        draw.ellipse(bounds, fill=255)
+
+    feather = max(1, int(min(width, height) * 0.035))
+    if feather > 1:
+        mask = mask.filter(ImageFilter.GaussianBlur(radius=feather))
+    return mask
+
+
+def apply_effect(image, detections, mode, strength, padding):
     result = image.copy()
-    for box in areas:
-        x0, y0, x1, y1 = box
+
+    for box, label, _score in detections:
+        x0, y0, x1, y1 = padded_box(box, padding, image.width, image.height)
         if x1 <= x0 or y1 <= y0:
             continue
-        if mode == "black" or min(x1 - x0, y1 - y0) < 4:
-            ImageDraw.Draw(result).rectangle(box, fill="black")
+
+        crop = result.crop((x0, y0, x1, y1))
+        if min(crop.size) < 4:
             continue
-        crop = result.crop(box)
-        if mode == "blur":
-            crop = crop.filter(ImageFilter.GaussianBlur(radius=max(1, strength)))
+
+        if mode == "black":
+            effected = crop.copy()
+            ImageDraw.Draw(effected).rectangle((0, 0, crop.width, crop.height), fill="black")
+        elif mode == "blur":
+            effected = crop.filter(ImageFilter.GaussianBlur(radius=max(1, strength)))
         else:
             block = max(2, min(strength, min(crop.size)))
             small = crop.resize(
                 (max(1, crop.width // block), max(1, crop.height // block)),
                 Image.Resampling.BOX,
             )
-            crop = small.resize(crop.size, Image.Resampling.NEAREST)
-        result.paste(crop, (x0, y0))
+            effected = small.resize(crop.size, Image.Resampling.NEAREST)
+
+        mask = build_region_mask(crop.size, label)
+        result.paste(effected, (x0, y0), mask)
+
     return result
 
 
@@ -145,14 +178,13 @@ def process_one(input_path: Path, output_path: Path, args, start=5, end=95):
         stage(1.0, f"{input_path.name}: 검열 대상 없음")
         return {"status": "undetected", "count": 0, "warning": warning}
 
-    stage(0.72, f"{input_path.name}: {len(detections)}개 영역에 효과 적용 중...")
-    areas = [padded_box(box, args.padding, image.width, image.height) for box, _, _ in detections]
-    result = apply_effect(image, areas, args.mode, args.strength)
+    stage(0.72, f"{input_path.name}: {len(detections)}개 검출 부위에 마스크 적용 중...")
+    result = apply_effect(image, detections, args.mode, args.strength, args.padding)
 
     stage(0.90, f"{input_path.name}: 결과 저장 중...")
     save_image(result, output_path)
     stage(1.0, f"{input_path.name}: 처리 완료")
-    return {"status": "success", "count": len(areas), "warning": warning}
+    return {"status": "success", "count": len(detections), "warning": warning}
 
 
 def emit(payload, exit_code=0):

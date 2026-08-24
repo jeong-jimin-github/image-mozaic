@@ -16,6 +16,8 @@ public partial class MainForm
     {
         menuOpen.Click -= MenuOpen_Click;
         menuOpen.Click += MenuOpenAndAuto_Click;
+
+        InitializeFolderBrowserPanel();
         InitializeDragDropImport();
 
         var autoMenu = new ToolStripMenuItem("자동 모자이크(&A)");
@@ -43,12 +45,16 @@ public partial class MainForm
 
     private void InitializeDragDropImport()
     {
-        AllowDrop = true;
-        pictureBox.AllowDrop = true;
-        DragEnter += Import_DragEnter;
-        DragDrop += Import_DragDrop;
-        pictureBox.DragEnter += Import_DragEnter;
-        pictureBox.DragDrop += Import_DragDrop;
+        RegisterDropTarget(this);
+        RegisterDropTarget(pictureBox);
+        if (_folderList != null) RegisterDropTarget(_folderList);
+    }
+
+    private void RegisterDropTarget(Control control)
+    {
+        control.AllowDrop = true;
+        control.DragEnter += Import_DragEnter;
+        control.DragDrop += Import_DragDrop;
     }
 
     private async void MenuOpenAndAuto_Click(object? sender, EventArgs e)
@@ -72,8 +78,8 @@ public partial class MainForm
             return;
         }
 
-        string[]? files = e.Data.GetData(DataFormats.FileDrop) as string[];
-        e.Effect = files?.Any(IsSupportedImportFile) == true
+        string[]? paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+        e.Effect = paths?.Any(path => Directory.Exists(path) || IsSupportedImportFile(path)) == true
             ? DragDropEffects.Copy
             : DragDropEffects.None;
     }
@@ -81,10 +87,20 @@ public partial class MainForm
     private async void Import_DragDrop(object? sender, DragEventArgs e)
     {
         if (_autoBusy || e.Data == null) return;
-        string[]? files = e.Data.GetData(DataFormats.FileDrop) as string[];
-        string? firstImage = files?.FirstOrDefault(IsSupportedImportFile);
-        if (firstImage == null) return;
-        await ImportAndAutoCensorAsync(firstImage);
+
+        string[]? paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+        if (paths == null || paths.Length == 0) return;
+
+        string? folder = paths.FirstOrDefault(Directory.Exists);
+        if (folder != null)
+        {
+            await OpenFolderAsync(folder, autoOpen: true);
+            return;
+        }
+
+        string? firstImage = paths.FirstOrDefault(IsSupportedImportFile);
+        if (firstImage != null)
+            await ImportAndAutoCensorAsync(firstImage);
     }
 
     private static bool IsSupportedImportFile(string path)
@@ -93,11 +109,16 @@ public partial class MainForm
             Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
     }
 
-    private async Task ImportAndAutoCensorAsync(string path)
+    private async Task ImportAndAutoCensorAsync(string path, bool refreshFolderPreview = true)
     {
         try
         {
+            if (refreshFolderPreview)
+                await RefreshFolderPreviewForFileAsync(path);
+
             LoadImage(path);
+            SelectFolderImage(path);
+
             statusLabel.Text = "이미지 가져오기 완료 - 자동 검열을 시작합니다...";
             await AutoCensorCurrentImageAsync(showUndetectedMessage: false);
         }
@@ -231,6 +252,9 @@ public partial class MainForm
             MessageBox.Show(message, "자동 모자이크 완료",
                 MessageBoxButtons.OK,
                 result.Errors == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+
+            if (string.Equals(_currentFolder, inputDir, StringComparison.OrdinalIgnoreCase))
+                await OpenFolderAsync(inputDir, _currentFilePath, autoOpen: false);
         }
         catch (Exception ex)
         {
@@ -262,6 +286,7 @@ public partial class MainForm
         UseWaitCursor = busy;
         menuStrip.Enabled = !busy;
         pictureBox.Enabled = !busy;
+        if (_folderList != null) _folderList.Enabled = !busy;
         if (!string.IsNullOrWhiteSpace(message)) statusLabel.Text = message;
     }
 
