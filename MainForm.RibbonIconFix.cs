@@ -44,14 +44,21 @@ public partial class MainForm
 
         var overlay = new RibbonIconOverlay(kind)
         {
-            Size = new Size(40, 40),
-            Location = new Point((button.Width - 40) / 2, 8),
+            Size = new Size(50, 44),
+            Location = new Point((button.Width - 50) / 2, 5),
             Anchor = AnchorStyles.Top,
             Enabled = false,
             TabStop = false
         };
+
         button.Controls.Add(overlay);
         overlay.BringToFront();
+
+        button.MouseEnter += (_, _) => overlay.Invalidate();
+        button.MouseLeave += (_, _) => overlay.Invalidate();
+        button.MouseDown += (_, _) => overlay.Invalidate();
+        button.MouseUp += (_, _) => overlay.Invalidate();
+        button.Invalidated += (_, _) => overlay.Invalidate();
     }
 }
 
@@ -65,25 +72,26 @@ internal sealed class RibbonIconOverlay : Control
 {
     private readonly RibbonOverlayIcon _kind;
     private static readonly Color Blue = Color.FromArgb(28, 123, 235);
-    private static readonly Color Dark = Color.FromArgb(24, 67, 125);
+    private static readonly Color DarkBlue = Color.FromArgb(22, 82, 155);
 
     public RibbonIconOverlay(RibbonOverlayIcon kind)
     {
         _kind = kind;
-        BackColor = Color.Transparent;
         SetStyle(ControlStyles.UserPaint |
                  ControlStyles.AllPaintingInWmPaint |
-                 ControlStyles.OptimizedDoubleBuffer |
-                 ControlStyles.SupportsTransparentBackColor, true);
+                 ControlStyles.OptimizedDoubleBuffer, true);
     }
 
     protected override void OnPaintBackground(PaintEventArgs pevent)
     {
-        // Preserve the parent ribbon card background.
+        // Paint the complete icon slot so the old built-in icon can never show
+        // through underneath the corrected icon.
+        pevent.Graphics.Clear(GetParentCardColor());
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
+        e.Graphics.Clear(GetParentCardColor());
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
 
@@ -93,57 +101,68 @@ internal sealed class RibbonIconOverlay : Control
             DrawHelp(e.Graphics);
     }
 
+    private Color GetParentCardColor()
+    {
+        if (Parent is not ModernRibbonButton button)
+            return Color.White;
+
+        if (button.Selected)
+            return Color.FromArgb(226, 240, 255);
+
+        bool hovered = button.ClientRectangle.Contains(button.PointToClient(Cursor.Position));
+        return hovered ? Color.FromArgb(244, 248, 253) : Color.White;
+    }
+
     private static void DrawPointer(Graphics g)
     {
+        // Windows-style cursor arrow: white body, crisp blue outline and a small
+        // accent ring. This stays recognizable even when the ribbon is scaled.
         PointF[] arrow =
         [
-            new(8f, 4f),
-            new(31f, 22f),
-            new(21.5f, 23.5f),
-            new(27.5f, 34f),
-            new(22f, 37f),
-            new(16f, 26f),
-            new(9f, 32f)
+            new(10f, 5f),
+            new(32f, 23f),
+            new(22f, 24f),
+            new(28f, 35f),
+            new(22f, 38f),
+            new(16f, 27f),
+            new(10f, 34f)
         ];
 
         using var path = new GraphicsPath();
         path.AddPolygon(arrow);
-        using var shadow = new SolidBrush(Color.FromArgb(38, 29, 77, 142));
-        using var fill = new SolidBrush(Blue);
-        using var outline = new Pen(Dark, 1.8f) { LineJoin = LineJoin.Round };
+        using var shadow = new SolidBrush(Color.FromArgb(36, 24, 64, 120));
+        using var body = new SolidBrush(Color.White);
+        using var outline = new Pen(Blue, 2.25f) { LineJoin = LineJoin.Round };
 
-        g.TranslateTransform(1.3f, 1.5f);
+        g.TranslateTransform(1.2f, 1.4f);
         g.FillPath(shadow, path);
         g.ResetTransform();
-        g.FillPath(fill, path);
+        g.FillPath(body, path);
         g.DrawPath(outline, path);
 
-        using var shine = new Pen(Color.FromArgb(190, 255, 255, 255), 1.4f)
-        {
-            StartCap = LineCap.Round,
-            EndCap = LineCap.Round
-        };
-        g.DrawLine(shine, 11f, 9f, 22f, 18f);
+        using var accent = new Pen(Blue, 2f);
+        using var accentFill = new SolidBrush(Color.FromArgb(228, 241, 255));
+        g.FillEllipse(accentFill, 32f, 7f, 10f, 10f);
+        g.DrawEllipse(accent, 32f, 7f, 10f, 10f);
     }
 
     private static void DrawHelp(Graphics g)
     {
-        using var outerFill = new SolidBrush(Color.FromArgb(232, 242, 255));
-        using var outer = new Pen(Blue, 2.4f);
-        g.FillEllipse(outerFill, 4f, 4f, 32f, 32f);
-        g.DrawEllipse(outer, 4f, 4f, 32f, 32f);
+        var circle = new Rectangle(8, 4, 34, 34);
+        using var fill = new SolidBrush(Color.FromArgb(232, 242, 255));
+        using var outline = new Pen(Blue, 2.5f);
+        g.FillEllipse(fill, circle);
+        g.DrawEllipse(outline, circle);
 
-        using var mark = new Pen(Blue, 3.1f)
-        {
-            StartCap = LineCap.Round,
-            EndCap = LineCap.Round
-        };
-        using var dot = new SolidBrush(Blue);
-
-        using var hook = new GraphicsPath();
-        hook.AddBezier(13f, 15f, 14f, 9.5f, 27f, 9.5f, 27f, 16f);
-        hook.AddBezier(27f, 16f, 27f, 20f, 20f, 20f, 20f, 24f);
-        g.DrawPath(mark, hook);
-        g.FillEllipse(dot, 18.2f, 29f, 3.8f, 3.8f);
+        using var font = new Font("Segoe UI Semibold", 17f, FontStyle.Bold, GraphicsUnit.Point);
+        TextRenderer.DrawText(
+            g,
+            "?",
+            font,
+            new Rectangle(circle.X, circle.Y - 1, circle.Width, circle.Height + 1),
+            DarkBlue,
+            TextFormatFlags.HorizontalCenter |
+            TextFormatFlags.VerticalCenter |
+            TextFormatFlags.NoPadding);
     }
 }
