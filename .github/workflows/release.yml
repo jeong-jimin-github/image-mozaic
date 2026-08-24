@@ -26,6 +26,13 @@ jobs:
       with:
         python-version: '3.12'
 
+    - name: Generate application icon
+      shell: pwsh
+      run: |
+        ./assets/Generate-AppIcon.ps1 -OutputPath ./assets/app.ico
+        if (-not (Test-Path './assets/app.ico')) { throw 'Application icon was not generated.' }
+        if ((Get-Item './assets/app.ico').Length -lt 1024) { throw 'Generated application icon is invalid.' }
+
     - name: Restore dependencies
       run: dotnet restore ImageMosaicEditor.sln
 
@@ -81,6 +88,7 @@ jobs:
     - name: Verify release layout
       shell: pwsh
       run: |
+        if (-not (Test-Path './assets/app.ico')) { throw 'Application icon is missing.' }
         if (-not (Test-Path './publish/ImageMosaicEditor.exe')) { throw 'ImageMosaicEditor.exe is missing.' }
         if (-not (Test-Path './publish/python-runtime/python.exe')) { throw 'Bundled python.exe is missing.' }
         if (-not (Test-Path './publish/python/auto_mosaic_bridge.py')) { throw 'auto_mosaic_bridge.py is missing.' }
