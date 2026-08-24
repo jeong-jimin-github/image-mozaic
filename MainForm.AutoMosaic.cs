@@ -1,18 +1,27 @@
 using System;
 using System.Drawing;
-using System.IO;
-using System.Windows.Forms;
 using System.Drawing.Imaging;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace ImageMosaicEditor;
 
 public partial class MainForm
 {
+    private static readonly string[] ImportExtensions = [".png", ".jpg", ".jpeg"];
+
     private void InitializeAutoMosaicMenu()
     {
+        // Replace the original Open handler so every imported image is censored immediately.
+        menuOpen.Click -= MenuOpen_Click;
+        menuOpen.Click += MenuOpenAndAuto_Click;
+        InitializeDragDropImport();
+
         var autoMenu = new ToolStripMenuItem("자동 모자이크(&A)");
 
-        var currentItem = new ToolStripMenuItem("현재 이미지 자동 처리(&A)")
+        var currentItem = new ToolStripMenuItem("현재 이미지 다시 자동 처리(&A)")
         {
             ShortcutKeys = Keys.Control | Keys.Shift | Keys.A
         };
@@ -24,26 +33,106 @@ public partial class MainForm
         var settingsItem = new ToolStripMenuItem("설정(&S)");
         settingsItem.Click += MenuAutoSettings_Click;
 
-        var installItem = new ToolStripMenuItem("Python 의존성 설치(&I)");
-        installItem.Click += MenuInstallPythonDependencies_Click;
-
         autoMenu.DropDownItems.AddRange([
             currentItem,
             batchItem,
             new ToolStripSeparator(),
-            settingsItem,
-            installItem
+            settingsItem
         ]);
         menuStrip.Items.Add(autoMenu);
     }
 
+    private void InitializeDragDropImport()
+    {
+        AllowDrop = true;
+        pictureBox.AllowDrop = true;
+
+        DragEnter += Import_DragEnter;
+        DragDrop += Import_DragDrop;
+        pictureBox.DragEnter += Import_DragEnter;
+        pictureBox.DragDrop += Import_DragDrop;
+    }
+
+    private async void MenuOpenAndAuto_Click(object? sender, EventArgs e)
+    {
+        if (_autoBusy) return;
+
+        using var dlg = new OpenFileDialog
+        {
+            Title = "이미지 파일 열기",
+            Filter = "이미지 파일 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|모든 파일 (*.*)|*.*"
+        };
+        if (dlg.ShowDialog(this) != DialogResult.OK) return;
+
+        await ImportAndAutoCensorAsync(dlg.FileName);
+    }
+
+    private void Import_DragEnter(object? sender, DragEventArgs e)
+    {
+        if (_autoBusy || e.Data == null || !e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            e.Effect = DragDropEffects.None;
+            return;
+        }
+
+        string[]? files = e.Data.GetData(DataFormats.FileDrop) as string[];
+        e.Effect = files?.Any(IsSupportedImportFile) == true
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+    }
+
+    private async void Import_DragDrop(object? sender, DragEventArgs e)
+    {
+        if (_autoBusy || e.Data == null) return;
+        string[]? files = e.Data.GetData(DataFormats.FileDrop) as string[];
+        string? firstImage = files?.FirstOrDefault(IsSupportedImportFile);
+        if (firstImage == null) return;
+
+        await ImportAndAutoCensorAsync(firstImage);
+    }
+
+    private static bool IsSupportedImportFile(string path)
+    {
+        return File.Exists(path) && ImportExtensions.Contains(
+            Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private async Task ImportAndAutoCensorAsync(string path)
+    {
+        try
+        {
+            LoadImage(path);
+            statusLabel.Text = "이미지 가져오기 완료 - 자동 검열을 시작합니다...";
+            await AutoCensorCurrentImageAsync(showUndetectedMessage: false);
+        }
+        catch (Exception ex)
+        {
+            ShowAutoError(ex);
+        }
+    }
+
     private async void MenuAutoCurrent_Click(object? sender, EventArgs e)
+    {
+        try
+        {
+            await AutoCensorCurrentImageAsync(showUndetectedMessage: true);
+        }
+        catch (Exception ex)
+        {
+            ShowAutoError(ex);
+        }
+    }
+
+    private async Task AutoCensorCurrentImageAsync(bool showUndetectedMessage)
     {
         if (_autoBusy) return;
         if (_originalBitmap == null)
         {
-            MessageBox.Show("먼저 이미지를 열어주세요.", "자동 모자이크",
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (showUndetectedMessage)
+            {
+                MessageBox.Show("먼저 이미지를 열어주세요.", "자동 모자이크",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
             return;
         }
 
@@ -60,9 +149,12 @@ public partial class MainForm
 
             if (result.Status == "undetected" || !File.Exists(output))
             {
-                statusLabel.Text = "자동 검출 결과: 대상 영역을 찾지 못했습니다.";
-                MessageBox.Show("검출된 영역이 없습니다.", "자동 모자이크",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                statusLabel.Text = "자동 검출 완료: 검열 대상 영역 없음";
+                if (showUndetectedMessage)
+                {
+                    MessageBox.Show("검출된 영역이 없습니다.", "자동 모자이크",
+                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
                 return;
             }
 
@@ -73,15 +165,13 @@ public partial class MainForm
             _originalBitmap = processed;
             pictureBox.Image = _originalBitmap;
             pictureBox.Invalidate();
-            statusLabel.Text = $"자동 처리 완료: {result.Count}개 영역";
+            statusLabel.Text = $"자동 검열 완료: {result.Count}개 영역";
 
             if (!string.IsNullOrWhiteSpace(result.Warning))
+            {
                 MessageBox.Show(result.Warning, "자동 모자이크 경고",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            ShowAutoError(ex);
+            }
         }
         finally
         {
@@ -137,34 +227,6 @@ public partial class MainForm
         {
             _autoSettings = dlg.Settings;
             statusLabel.Text = $"자동 모자이크 설정: {_autoSettings.Detector} / {_autoSettings.Mode}";
-        }
-    }
-
-    private async void MenuInstallPythonDependencies_Click(object? sender, EventArgs e)
-    {
-        if (_autoBusy) return;
-        DialogResult answer = MessageBox.Show(
-            "Python 패키지 dghs-imgutils와 Pillow를 설치합니다. 계속할까요?",
-            "Python 의존성 설치",
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Question);
-        if (answer != DialogResult.Yes) return;
-
-        try
-        {
-            SetAutoBusy(true, "Python 의존성 설치 중...");
-            await AutoMosaicEngine.InstallDependenciesAsync();
-            MessageBox.Show("필수 Python 의존성 설치가 완료되었습니다.\nNTD11을 사용하려면 ultralytics를 별도로 설치하고 .pt 모델을 설정하세요.",
-                "설치 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            statusLabel.Text = "Python 의존성 설치 완료";
-        }
-        catch (Exception ex)
-        {
-            ShowAutoError(ex);
-        }
-        finally
-        {
-            SetAutoBusy(false);
         }
     }
 

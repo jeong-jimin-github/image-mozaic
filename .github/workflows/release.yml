@@ -19,11 +19,51 @@ jobs:
       with:
         dotnet-version: 8.0.x
 
+    - name: Setup Python used for dependency packaging
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
     - name: Restore dependencies
       run: dotnet restore ImageMosaicEditor.sln
 
-    - name: Publish Application
-      run: dotnet publish ImageMosaicEditor.csproj -c Release -r win-x64 --self-contained false -o ./publish
+    - name: Publish self-contained application
+      run: dotnet publish ImageMosaicEditor.csproj -c Release -r win-x64 --self-contained true -o ./publish
+
+    - name: Bundle Python runtime and AI dependencies
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $pythonVersion = '3.12.10'
+        $runtimeDir = Join-Path $PWD 'publish/python-runtime'
+        $sitePackages = Join-Path $runtimeDir 'Lib/site-packages'
+        $embedZip = Join-Path $env:RUNNER_TEMP 'python-embed-amd64.zip'
+
+        New-Item -ItemType Directory -Force -Path $runtimeDir | Out-Null
+        Invoke-WebRequest `
+          -Uri "https://www.python.org/ftp/python/$pythonVersion/python-$pythonVersion-embed-amd64.zip" `
+          -OutFile $embedZip
+        Expand-Archive -Path $embedZip -DestinationPath $runtimeDir -Force
+
+        $pthFile = Get-ChildItem $runtimeDir -Filter 'python*._pth' | Select-Object -First 1
+        if (-not $pthFile) { throw 'Embedded Python _pth file was not found.' }
+        $pth = Get-Content $pthFile.FullName
+        $pth = $pth | ForEach-Object { if ($_ -eq '#import site') { 'import site' } else { $_ } }
+        $pth += 'Lib\site-packages'
+        Set-Content -Path $pthFile.FullName -Value $pth -Encoding ascii
+
+        New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
+        python -m pip install --disable-pip-version-check --no-cache-dir `
+          -r ./python/requirements.txt `
+          --target $sitePackages
+
+        Get-ChildItem $sitePackages -Directory -Recurse -Filter '__pycache__' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+        Get-ChildItem $sitePackages -File -Recurse -Include '*.pyc' | Remove-Item -Force -ErrorAction SilentlyContinue
+
+        $env:PYTHONUTF8 = '1'
+        $env:PYTHONNOUSERSITE = '1'
+        & (Join-Path $runtimeDir 'python.exe') -c "from PIL import Image; from imgutils.detect import detect_censors; import ultralytics; print('Bundled Python dependencies OK')"
+        if ($LASTEXITCODE -ne 0) { throw 'Bundled Python dependency smoke test failed.' }
 
     - name: Zip Artifact
       shell: pwsh

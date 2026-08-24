@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ImageMosaicEditor;
 
@@ -27,7 +28,7 @@ internal static class AutoMosaicEngine
     private static PythonCommand? _cachedPython;
 
     private static string ScriptPath => Path.Combine(AppContext.BaseDirectory, "python", "auto_mosaic_bridge.py");
-    private static string RequirementsPath => Path.Combine(AppContext.BaseDirectory, "python", "requirements.txt");
+    private static string BundledPythonPath => Path.Combine(AppContext.BaseDirectory, "python-runtime", "python.exe");
 
     public static async Task<AutoMosaicResult> ProcessFileAsync(
         string inputPath, string outputPath, AutoMosaicSettings settings,
@@ -52,22 +53,6 @@ internal static class AutoMosaicEngine
         };
         AppendSettings(args, settings);
         return await RunBridgeAsync(args, cancellationToken);
-    }
-
-    public static async Task<string> InstallDependenciesAsync(CancellationToken cancellationToken = default)
-    {
-        if (!File.Exists(RequirementsPath))
-            throw new FileNotFoundException("Python requirements.txt를 찾을 수 없습니다.", RequirementsPath);
-
-        PythonCommand python = await FindPythonAsync(cancellationToken);
-        var args = new List<string>();
-        args.AddRange(python.PrefixArguments);
-        args.AddRange(["-m", "pip", "install", "-r", RequirementsPath]);
-
-        var result = await RunProcessAsync(python.FileName, args, cancellationToken);
-        if (result.ExitCode != 0)
-            throw new InvalidOperationException($"Python 의존성 설치 실패:\n{result.StdErr}\n{result.StdOut}".Trim());
-        return string.IsNullOrWhiteSpace(result.StdOut) ? result.StdErr : result.StdOut;
     }
 
     private static void AppendSettings(List<string> args, AutoMosaicSettings settings)
@@ -126,6 +111,18 @@ internal static class AutoMosaicEngine
     {
         if (_cachedPython != null) return _cachedPython;
 
+        if (File.Exists(BundledPythonPath))
+        {
+            var bundled = new PythonCommand(BundledPythonPath, []);
+            var bundledResult = await RunProcessAsync(
+                bundled.FileName, ["--version"], cancellationToken, throwOnStartFailure: false);
+            if (bundledResult.ExitCode == 0)
+            {
+                _cachedPython = bundled;
+                return bundled;
+            }
+        }
+
         PythonCommand[] candidates =
         [
             new("py", ["-3.12"]),
@@ -139,27 +136,20 @@ internal static class AutoMosaicEngine
 
         foreach (var candidate in candidates)
         {
-            try
+            var args = new List<string>();
+            args.AddRange(candidate.PrefixArguments);
+            args.Add("--version");
+            var result = await RunProcessAsync(
+                candidate.FileName, args, cancellationToken, throwOnStartFailure: false);
+            if (result.ExitCode == 0)
             {
-                var args = new List<string>();
-                args.AddRange(candidate.PrefixArguments);
-                args.Add("--version");
-                var result = await RunProcessAsync(
-                    candidate.FileName, args, cancellationToken, throwOnStartFailure: false);
-                if (result.ExitCode == 0)
-                {
-                    _cachedPython = candidate;
-                    return candidate;
-                }
-            }
-            catch
-            {
-                // Try next candidate.
+                _cachedPython = candidate;
+                return candidate;
             }
         }
 
         throw new InvalidOperationException(
-            "Python 3를 찾을 수 없습니다. Python 3.10 이상을 설치한 뒤 다시 시도하세요.");
+            "번들 Python 런타임을 찾을 수 없습니다. Release ZIP을 다시 내려받거나 Python 3.10 이상을 설치하세요.");
     }
 
     private static async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessAsync(
@@ -174,9 +164,14 @@ internal static class AutoMosaicEngine
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
             CreateNoWindow = true,
             WorkingDirectory = AppContext.BaseDirectory
         };
+        psi.Environment["PYTHONUTF8"] = "1";
+        psi.Environment["PYTHONIOENCODING"] = "utf-8";
+        psi.Environment["PYTHONNOUSERSITE"] = "1";
         foreach (string arg in arguments) psi.ArgumentList.Add(arg);
 
         using var process = new Process { StartInfo = psi };
