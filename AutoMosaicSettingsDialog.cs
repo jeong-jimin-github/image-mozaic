@@ -33,7 +33,9 @@ internal sealed class AutoMosaicSettingsDialog : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(570, 390);
+        AutoScaleMode = AutoScaleMode.Dpi;
+        ClientSize = new Size(600, 500);
+        MinimumSize = new Size(600, 500);
         BackColor = Background;
         Font = new Font("Segoe UI", 9.5f);
 
@@ -49,15 +51,15 @@ internal sealed class AutoMosaicSettingsDialog : Form
         var header = new Panel
         {
             Dock = DockStyle.Top,
-            Height = 74,
+            Height = 82,
             BackColor = Surface,
-            Padding = new Padding(22, 13, 20, 8)
+            Padding = new Padding(24, 14, 22, 10)
         };
         var title = new Label
         {
             Text = "자동 모자이크 설정",
             Dock = DockStyle.Top,
-            Height = 28,
+            Height = 30,
             ForeColor = TextColor,
             Font = new Font("Segoe UI Semibold", 14f, FontStyle.Bold)
         };
@@ -66,31 +68,43 @@ internal sealed class AutoMosaicSettingsDialog : Form
             Text = "검출 민감도와 처리 방식, 기본 검출 대상을 조정합니다.",
             Dock = DockStyle.Fill,
             ForeColor = Muted,
-            Font = new Font("Segoe UI", 9f)
+            Font = new Font("Segoe UI", 9f),
+            TextAlign = ContentAlignment.MiddleLeft
         };
         header.Controls.Add(subtitle);
         header.Controls.Add(title);
 
+        var shell = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Background,
+            Padding = new Padding(20)
+        };
         var card = new Panel
         {
             Dock = DockStyle.Fill,
             BackColor = Surface,
-            Padding = new Padding(20),
-            Margin = new Padding(18)
+            Padding = new Padding(22, 18, 22, 18)
         };
 
         var table = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 6,
-            Padding = new Padding(0),
+            RowCount = 7,
+            Padding = Padding.Empty,
+            Margin = Padding.Empty,
             BackColor = Surface
         };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 160));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 5; i++) table.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
 
         StyleInput(_mode);
         StyleInput(_strength);
@@ -108,20 +122,37 @@ internal sealed class AutoMosaicSettingsDialog : Form
         var targets = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            AutoSize = true,
+            WrapContents = true,
+            AutoScroll = false,
             BackColor = Surface,
             FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(0, 8, 0, 0)
+            Padding = new Padding(0, 10, 0, 0),
+            Margin = Padding.Empty
         };
         targets.Controls.AddRange([_nipple, _anus, _testicles]);
         AddRow(table, 4, "추가 검출", targets);
+
+        var hint = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "설정을 변경한 뒤 다시 자동 처리하면 이전 처리본 위에 덧씌우지 않고 원본 이미지에서 새로 처리합니다.",
+            ForeColor = Muted,
+            Font = new Font("Segoe UI", 9f),
+            TextAlign = ContentAlignment.TopLeft,
+            Padding = new Padding(0, 12, 0, 0),
+            AutoEllipsis = true
+        };
+        table.Controls.Add(hint, 0, 5);
+        table.SetColumnSpan(hint, 2);
 
         var buttons = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
             BackColor = Surface,
-            Padding = new Padding(0, 14, 0, 0)
+            Padding = new Padding(0, 12, 0, 0),
+            Margin = Padding.Empty
         };
         var ok = CreateButton("확인", true);
         var cancel = CreateButton("취소", false);
@@ -130,13 +161,11 @@ internal sealed class AutoMosaicSettingsDialog : Form
         ok.Click += (_, _) => SaveSettings();
         buttons.Controls.Add(ok);
         buttons.Controls.Add(cancel);
-        table.Controls.Add(buttons, 0, 5);
+        table.Controls.Add(buttons, 0, 6);
         table.SetColumnSpan(buttons, 2);
 
         card.Controls.Add(table);
-        var shell = new Panel { Dock = DockStyle.Fill, BackColor = Background, Padding = new Padding(18) };
         shell.Controls.Add(card);
-
         Controls.Add(shell);
         Controls.Add(header);
         AcceptButton = ok;
@@ -148,8 +177,8 @@ internal sealed class AutoMosaicSettingsDialog : Form
         return new Button
         {
             Text = text,
-            Width = 96,
-            Height = 36,
+            Width = 102,
+            Height = 38,
             FlatStyle = FlatStyle.Flat,
             BackColor = primary ? Blue : Color.FromArgb(246, 248, 251),
             ForeColor = primary ? Color.White : TextColor,
@@ -164,14 +193,15 @@ internal sealed class AutoMosaicSettingsDialog : Form
         control.Font = new Font("Segoe UI", 9.5f);
         control.BackColor = Surface;
         control.ForeColor = TextColor;
-        control.Margin = new Padding(0, 7, 0, 7);
+        control.Margin = new Padding(0, 8, 0, 8);
     }
 
     private static void StyleCheck(CheckBox control)
     {
         control.ForeColor = TextColor;
         control.BackColor = Surface;
-        control.Margin = new Padding(0, 0, 16, 0);
+        control.Margin = new Padding(0, 0, 18, 0);
+        control.AutoSize = true;
     }
 
     private static void AddRow(TableLayoutPanel table, int row, string label, Control control)
@@ -182,7 +212,8 @@ internal sealed class AutoMosaicSettingsDialog : Form
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = TextColor,
-            Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold)
+            Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold),
+            Margin = Padding.Empty
         };
         control.Dock = DockStyle.Fill;
         table.Controls.Add(lbl, 0, row);
