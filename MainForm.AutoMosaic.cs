@@ -140,7 +140,8 @@ public partial class MainForm
         using var progressWindow = new AutoMosaicProgressForm("자동 검열 진행");
         var progress = new Progress<AutoMosaicProgress>(p =>
         {
-            progressWindow.UpdateProgress(p);
+            if (!progressWindow.IsDisposed && progressWindow.IsHandleCreated)
+                progressWindow.UpdateProgress(p);
             statusLabel.Text = p.Message;
         });
 
@@ -207,7 +208,8 @@ public partial class MainForm
         using var progressWindow = new AutoMosaicProgressForm("폴더 자동 검열 진행");
         var progress = new Progress<AutoMosaicProgress>(p =>
         {
-            progressWindow.UpdateProgress(p);
+            if (!progressWindow.IsDisposed && progressWindow.IsHandleCreated)
+                progressWindow.UpdateProgress(p);
             statusLabel.Text = p.Message;
         });
 
