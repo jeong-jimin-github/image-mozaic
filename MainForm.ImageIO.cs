@@ -14,6 +14,12 @@ public partial class MainForm
 {
     private static readonly byte[] RawImageMagic = [(byte)'I', (byte)'M', (byte)'B', (byte)'G'];
 
+    // _originalBitmap is the editable/visible working bitmap kept for compatibility
+    // with the existing manual mosaic and undo/redo code. _sourceBitmap is never
+    // modified after import and is used for every automatic re-process and eraser.
+    private Bitmap? _sourceBitmap;
+    private string? _sourceFilePath;
+
     private static Bitmap LoadBitmapDetached(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -21,11 +27,6 @@ public partial class MainForm
         if (!File.Exists(path))
             throw new FileNotFoundException("이미지 파일을 찾을 수 없습니다.", path);
 
-        // Do not ask GDI+ to decode the user's original file. Some PNGs that are
-        // valid in browsers/Pillow are rejected by System.Drawing with the vague
-        // "Parameter is not valid" exception. The bundled Pillow runtime decodes
-        // the source to a tiny raw-BGRA cache format, then C# fills a 32bpp Bitmap
-        // directly with LockBits. GDI+ never parses the original image format.
         string cachePath = EnsurePillowDecodedCache(path);
         return LoadRawBgraBitmap(cachePath);
     }
@@ -157,20 +158,63 @@ public partial class MainForm
         return bitmap;
     }
 
-    private void LoadImageDetached(string path)
+    private void LoadImageDetached(string path, string? sourcePath = null)
     {
-        Bitmap loaded = LoadBitmapDetached(path);
+        Bitmap working = LoadBitmapDetached(path);
+        Bitmap source;
+
+        string? resolvedSource = sourcePath ?? ResolveSourcePathForWorkingFile(path);
+        if (!string.IsNullOrWhiteSpace(resolvedSource)
+            && File.Exists(resolvedSource)
+            && !string.Equals(Path.GetFullPath(resolvedSource), Path.GetFullPath(path), StringComparison.OrdinalIgnoreCase))
+        {
+            source = LoadBitmapDetached(resolvedSource);
+            _sourceFilePath = Path.GetFullPath(resolvedSource);
+        }
+        else
+        {
+            source = (Bitmap)working.Clone();
+            _sourceFilePath = Path.GetFullPath(path);
+        }
+
+        if (source.Size != working.Size)
+        {
+            source.Dispose();
+            source = (Bitmap)working.Clone();
+            _sourceFilePath = Path.GetFullPath(path);
+        }
 
         pictureBox.Image = null;
         _originalBitmap?.Dispose();
+        _sourceBitmap?.Dispose();
         ClearStacks();
-        _originalBitmap = loaded;
+
+        _originalBitmap = working;
+        _sourceBitmap = source;
         _currentFilePath = path;
         _selectionRect = Rectangle.Empty;
 
         pictureBox.Image = _originalBitmap;
         pictureBox.SizeMode = PictureBoxSizeMode.Zoom;
         Text = $"이미지 모자이크 편집기 - {Path.GetFileName(path)}";
+    }
+
+    private void ReplaceWorkingBitmap(Bitmap next, bool saveUndo)
+    {
+        if (saveUndo && _originalBitmap != null)
+            SaveStateToUndo();
+
+        pictureBox.Image = null;
+        _originalBitmap?.Dispose();
+        _originalBitmap = next;
+        pictureBox.Image = _originalBitmap;
+        pictureBox.Invalidate();
+    }
+
+    private void ResetWorkingFromSource(bool saveUndo)
+    {
+        if (_sourceBitmap == null) return;
+        ReplaceWorkingBitmap((Bitmap)_sourceBitmap.Clone(), saveUndo);
     }
 
     private static void SaveBitmapAsPngDetached(Bitmap source, string path)
