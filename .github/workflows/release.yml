@@ -26,6 +26,22 @@ jobs:
       with:
         python-version: '3.12'
 
+    - name: Validate application icon
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if (-not (Test-Path './assets/app.ico')) { throw 'Application icon is missing.' }
+        Add-Type -AssemblyName System.Drawing
+        $resolved = (Resolve-Path './assets/app.ico').Path
+        $icon = New-Object System.Drawing.Icon($resolved)
+        try {
+          if ($icon.Width -lt 16 -or $icon.Height -lt 16) { throw 'Application icon dimensions are invalid.' }
+          Write-Host "Application icon OK: $($icon.Width)x$($icon.Height)"
+        }
+        finally {
+          $icon.Dispose()
+        }
+
     - name: Restore dependencies
       run: dotnet restore ImageMosaicEditor.sln
 
