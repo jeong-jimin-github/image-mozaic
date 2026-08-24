@@ -26,14 +26,23 @@ jobs:
       with:
         python-version: '3.12'
 
+    - name: Build application icon from generated artwork
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if (-not (Test-Path './assets/app_icon_256.png')) { throw 'Generated icon artwork PNG is missing.' }
+        python -m pip install --disable-pip-version-check --quiet Pillow
+        python -c "from PIL import Image; im=Image.open(r'assets/app_icon_256.png').convert('RGBA'); im.save(r'assets/app.ico', format='ICO', sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)], bitmap_format='bmp')"
+        if ($LASTEXITCODE -ne 0) { throw 'ICO generation from artwork failed.' }
+        if (-not (Test-Path './assets/app.ico')) { throw 'Application icon was not generated.' }
+
     - name: Validate application icon
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
-        if (-not (Test-Path './assets/app.ico')) { throw 'Application icon is missing.' }
         Add-Type -AssemblyName System.Drawing
         $resolved = (Resolve-Path './assets/app.ico').Path
-        $icon = New-Object System.Drawing.Icon($resolved)
+        $icon = [System.Drawing.Icon]::new($resolved)
         try {
           if ($icon.Width -lt 16 -or $icon.Height -lt 16) { throw 'Application icon dimensions are invalid.' }
           Write-Host "Application icon OK: $($icon.Width)x$($icon.Height)"

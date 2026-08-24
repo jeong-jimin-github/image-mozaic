@@ -8,7 +8,7 @@
     <AssemblyName>ImageMosaicEditor</AssemblyName>
     <RootNamespace>ImageMosaicEditor</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <ApplicationIcon>assets\app.ico</ApplicationIcon>
+    <ApplicationIcon Condition="Exists('$(ProjectDir)assets\app.ico')">assets\app.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
