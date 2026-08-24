@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+
 namespace ImageMosaicEditor;
 
 internal sealed class AutoMosaicSettingsDialog : Form
@@ -12,11 +13,9 @@ internal sealed class AutoMosaicSettingsDialog : Form
         Minimum = 0, Maximum = 1, DecimalPlaces = 2, Increment = 0.05M, Value = 0.25M
     };
     private readonly NumericUpDown _padding = new() { Minimum = 0, Maximum = 500, Value = 10 };
-    private readonly ComboBox _detector = new() { DropDownStyle = ComboBoxStyle.DropDownList };
-    private readonly CheckBox _nipple = new() { Text = "유두 포함" };
-    private readonly CheckBox _anus = new() { Text = "항문 포함" };
-    private readonly CheckBox _testicles = new() { Text = "고환 포함" };
-    private readonly TextBox _modelPath = new() { Dock = DockStyle.Fill };
+    private readonly CheckBox _nipple = new() { Text = "유두" };
+    private readonly CheckBox _anus = new() { Text = "항문" };
+    private readonly CheckBox _testicles = new() { Text = "고환/남성 생식기" };
 
     public AutoMosaicSettings Settings { get; private set; }
 
@@ -28,51 +27,37 @@ internal sealed class AutoMosaicSettingsDialog : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ClientSize = new Size(520, 360);
+        ClientSize = new Size(520, 290);
 
         _mode.Items.AddRange(["mosaic", "black", "blur"]);
-        _detector.Items.AddRange(["auto", "imgutils", "ntd11"]);
         _mode.SelectedItem = current.Mode;
-        _detector.SelectedItem = current.Detector;
         _strength.Value = Math.Clamp(current.Strength, 1, 100);
         _confidence.Value = Math.Clamp((decimal)current.Confidence, 0, 1);
         _padding.Value = Math.Clamp(current.Padding, 0, 500);
         _nipple.Checked = current.IncludeNipple;
         _anus.Checked = current.IncludeAnus;
         _testicles.Checked = current.IncludeTesticles;
-        _modelPath.Text = current.Ntd11ModelPath;
 
         var table = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 8,
-            Padding = new Padding(14),
-            AutoSize = false
+            RowCount = 6,
+            Padding = new Padding(14)
         };
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (int i = 0; i < 7; i++) table.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        for (int i = 0; i < 5; i++) table.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         AddRow(table, 0, "처리 방식", _mode);
         AddRow(table, 1, "강도", _strength);
         AddRow(table, 2, "신뢰도", _confidence);
         AddRow(table, 3, "검출 여백(px)", _padding);
-        AddRow(table, 4, "검출기", _detector);
 
         var targets = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true };
         targets.Controls.AddRange([_nipple, _anus, _testicles]);
-        AddRow(table, 5, "추가 검출", targets);
-
-        var modelPanel = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };
-        modelPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        modelPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
-        var browse = new Button { Text = "찾기...", Dock = DockStyle.Fill };
-        browse.Click += BrowseModel_Click;
-        modelPanel.Controls.Add(_modelPath, 0, 0);
-        modelPanel.Controls.Add(browse, 1, 0);
-        AddRow(table, 6, "NTD11 모델(.pt)", modelPanel);
+        AddRow(table, 4, "추가 검출", targets);
 
         var buttons = new FlowLayoutPanel
         {
@@ -85,7 +70,7 @@ internal sealed class AutoMosaicSettingsDialog : Form
         ok.Click += (_, _) => SaveSettings();
         buttons.Controls.Add(ok);
         buttons.Controls.Add(cancel);
-        table.Controls.Add(buttons, 0, 7);
+        table.Controls.Add(buttons, 0, 5);
         table.SetColumnSpan(buttons, 2);
 
         Controls.Add(table);
@@ -106,17 +91,6 @@ internal sealed class AutoMosaicSettingsDialog : Form
         table.Controls.Add(control, 1, row);
     }
 
-    private void BrowseModel_Click(object? sender, EventArgs e)
-    {
-        using var dlg = new OpenFileDialog
-        {
-            Title = "NTD11 모델 선택",
-            Filter = "PyTorch 모델 (*.pt)|*.pt|모든 파일 (*.*)|*.*"
-        };
-        if (dlg.ShowDialog(this) == DialogResult.OK)
-            _modelPath.Text = dlg.FileName;
-    }
-
     private void SaveSettings()
     {
         Settings = new AutoMosaicSettings
@@ -125,11 +99,9 @@ internal sealed class AutoMosaicSettingsDialog : Form
             Strength = (int)_strength.Value,
             Confidence = (double)_confidence.Value,
             Padding = (int)_padding.Value,
-            Detector = _detector.SelectedItem?.ToString() ?? "auto",
             IncludeNipple = _nipple.Checked,
             IncludeAnus = _anus.Checked,
-            IncludeTesticles = _testicles.Checked,
-            Ntd11ModelPath = _modelPath.Text.Trim()
+            IncludeTesticles = _testicles.Checked
         };
     }
 }
