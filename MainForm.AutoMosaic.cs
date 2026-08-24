@@ -87,6 +87,7 @@ public partial class MainForm
     {
         if (_autoBusy || e.Data == null) return;
 
+        string stage = "드롭 경로 확인";
         try
         {
             string[]? paths = e.Data.GetData(DataFormats.FileDrop) as string[];
@@ -95,18 +96,22 @@ public partial class MainForm
             string? folder = paths.FirstOrDefault(Directory.Exists);
             if (folder != null)
             {
+                stage = "폴더 열기";
                 await OpenFolderAsync(folder, autoOpen: true);
                 return;
             }
 
             string? firstImage = paths.FirstOrDefault(IsSupportedImportFile);
             if (firstImage != null)
+            {
+                stage = "이미지 가져오기";
                 await ImportAndAutoCensorAsync(firstImage);
+            }
         }
         catch (Exception ex)
         {
-            WriteAutoDiagnostic("drag-drop", null, ex);
-            ShowAutoError(ex);
+            WriteAutoDiagnostic(stage, null, ex);
+            ShowAutoError(ex, stage);
         }
     }
 
@@ -118,21 +123,30 @@ public partial class MainForm
 
     private async Task ImportAndAutoCensorAsync(string path, bool refreshFolderPreview = true)
     {
+        string stage = "가져오기 준비";
         try
         {
-            if (refreshFolderPreview)
-                await RefreshFolderPreviewForFileAsync(path);
-
+            // Load the selected image first. A bad sibling thumbnail must never stop
+            // the user from opening a valid image.
+            stage = "이미지 디코딩";
             LoadImageDetached(path);
-            SelectFolderImage(path);
 
+            if (refreshFolderPreview)
+            {
+                stage = "폴더 미리보기 생성";
+                await RefreshFolderPreviewForFileAsync(path);
+            }
+
+            SelectFolderImage(path);
             statusLabel.Text = "이미지 가져오기 완료 - 자동 검열을 시작합니다...";
+
+            stage = "자동 검열";
             await AutoCensorCurrentImageAsync(showUndetectedMessage: false);
         }
         catch (Exception ex)
         {
-            WriteAutoDiagnostic("import-auto-censor", path, ex);
-            ShowAutoError(ex);
+            WriteAutoDiagnostic(stage, path, ex);
+            ShowAutoError(ex, stage);
         }
     }
 
@@ -144,8 +158,8 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            WriteAutoDiagnostic("manual-auto-censor", _currentFilePath, ex);
-            ShowAutoError(ex);
+            WriteAutoDiagnostic("수동 자동검열", _currentFilePath, ex);
+            ShowAutoError(ex, "수동 자동검열");
         }
     }
 
@@ -175,13 +189,17 @@ public partial class MainForm
             statusLabel.Text = p.Message;
         });
 
+        string stage = "자동 검열 준비";
         try
         {
             SetAutoBusy(true, "자동 검열 준비 중...");
             progressWindow.Show(this);
             progressWindow.UpdateProgress(new AutoMosaicProgress(1, "이미지 준비 중..."));
 
+            stage = "임시 PNG 저장";
             SaveBitmapAsPngDetached(_originalBitmap, input);
+
+            stage = "Python 검출/검열";
             AutoMosaicResult result = await AutoMosaicEngine.ProcessFileAsync(
                 input, output, _autoSettings, progress);
 
@@ -196,8 +214,8 @@ public partial class MainForm
                 return;
             }
 
-            using Bitmap loaded = LoadBitmapDetached(output);
-            var processed = (Bitmap)loaded.Clone();
+            stage = "검열 결과 이미지 로드";
+            Bitmap processed = LoadBitmapDetached(output);
             SaveStateToUndo();
             pictureBox.Image = null;
             _originalBitmap.Dispose();
@@ -214,8 +232,8 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            WriteAutoDiagnostic("auto-censor-processing", _currentFilePath, ex);
-            throw;
+            WriteAutoDiagnostic(stage, _currentFilePath, ex);
+            throw new InvalidOperationException($"{stage} 단계 실패: {ex.Message}", ex);
         }
         finally
         {
@@ -273,8 +291,8 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
-            WriteAutoDiagnostic("batch-auto-censor", inputDir, ex);
-            ShowAutoError(ex);
+            WriteAutoDiagnostic("폴더 일괄 자동검열", inputDir, ex);
+            ShowAutoError(ex, "폴더 일괄 자동검열");
         }
         finally
         {
@@ -306,11 +324,12 @@ public partial class MainForm
         if (!string.IsNullOrWhiteSpace(message)) statusLabel.Text = message;
     }
 
-    private void ShowAutoError(Exception ex)
+    private void ShowAutoError(Exception ex, string? stage = null)
     {
         statusLabel.Text = "자동 모자이크 처리 실패";
+        string stageText = string.IsNullOrWhiteSpace(stage) ? string.Empty : $"오류 단계: {stage}\n\n";
         MessageBox.Show(
-            $"{ex.Message}\n\n상세 로그: %LOCALAPPDATA%\\ImageMosaicEditor\\auto-error.log",
+            $"{stageText}{ex.Message}\n\n상세 로그: %LOCALAPPDATA%\\ImageMosaicEditor\\auto-error.log",
             "자동 모자이크 오류",
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);
