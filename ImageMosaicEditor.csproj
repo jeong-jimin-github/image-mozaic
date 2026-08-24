@@ -8,6 +8,7 @@
     <AssemblyName>ImageMosaicEditor</AssemblyName>
     <RootNamespace>ImageMosaicEditor</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>assets\app.ico</ApplicationIcon>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -16,5 +17,9 @@
   <ItemGroup>
     <Content Include="python\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <Target Name="GenerateApplicationIcon" BeforeTargets="PrepareForBuild">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(ProjectDir)assets\Generate-AppIcon.ps1&quot; -OutputPath &quot;$(ProjectDir)assets\app.ico&quot;" />
+  </Target>
 
 </Project>
