@@ -48,26 +48,53 @@ public partial class MainForm
         {
             Dock = DockStyle.Fill,
             Margin = new Padding(0),
-            Padding = new Padding(10, 0, 8, 0),
+            Padding = new Padding(14, 0, 8, 0),
             Text = "이미지 목록  ·  0개",
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true,
-            BackColor = SystemColors.Control,
-            ForeColor = SystemColors.ControlText
+            BackColor = Color.White,
+            ForeColor = Color.FromArgb(25, 39, 66),
+            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold)
         };
+
+        var dropCard = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(10, 5, 10, 8),
+            Padding = new Padding(10),
+            BackColor = Color.FromArgb(247, 250, 255),
+            BorderStyle = BorderStyle.FixedSingle,
+            AllowDrop = true
+        };
+        var dropLabel = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "폴더를 드래그해 놓으세요.\n또는 이미지 파일을 드래그해 주세요.",
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.FromArgb(73, 92, 122),
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI Semibold", 9.2f, FontStyle.Bold),
+            AllowDrop = true
+        };
+        dropCard.Controls.Add(dropLabel);
+        RegisterDropTarget(dropCard);
+        RegisterDropTarget(dropLabel);
 
         var list = new ListView
         {
             Dock = DockStyle.Fill,
             View = View.Tile,
-            TileSize = new Size(230, 82),
+            TileSize = new Size(270, 88),
             LargeImageList = thumbnails,
             MultiSelect = false,
             HideSelection = false,
             FullRowSelect = true,
-            BorderStyle = BorderStyle.FixedSingle,
+            BorderStyle = BorderStyle.None,
             AllowDrop = true,
-            ShowItemToolTips = true
+            ShowItemToolTips = true,
+            BackColor = Color.White,
+            ForeColor = Color.FromArgb(25, 39, 66),
+            Font = new Font("Segoe UI", 9.2f)
         };
         list.SelectedIndexChanged += FolderList_SelectedIndexChanged;
 
@@ -75,15 +102,18 @@ public partial class MainForm
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 2,
+            RowCount = 3,
             Margin = new Padding(0),
-            Padding = new Padding(0)
+            Padding = new Padding(0),
+            BackColor = Color.White
         };
         sidebarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         sidebarLayout.Controls.Add(header, 0, 0);
-        sidebarLayout.Controls.Add(list, 0, 1);
+        sidebarLayout.Controls.Add(dropCard, 0, 1);
+        sidebarLayout.Controls.Add(list, 0, 2);
         split.Panel2.Controls.Add(sidebarLayout);
 
         Controls.Add(split);
