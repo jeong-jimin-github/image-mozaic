@@ -10,6 +10,8 @@ namespace ImageMosaicEditor;
 public partial class MainForm
 {
     private static readonly string[] ImportExtensions = [".png", ".jpg", ".jpeg", ".webp"];
+    private string? _lastBatchInputDir;
+    private string? _lastBatchOutputDir;
 
     private void InitializeAutoMosaicMenu()
     {
@@ -18,6 +20,7 @@ public partial class MainForm
 
         InitializeFolderBrowserPanel();
         InitializeDragDropImport();
+        InitializeEraserTools();
 
         var autoMenu = new ToolStripMenuItem("자동 모자이크(&A)");
 
@@ -167,7 +170,9 @@ public partial class MainForm
     private async Task AutoCensorCurrentImageAsync(bool showUndetectedMessage)
     {
         if (_autoBusy) return;
-        if (_originalBitmap == null)
+
+        Bitmap? source = _sourceBitmap ?? _originalBitmap;
+        if (source == null)
         {
             if (showUndetectedMessage)
             {
@@ -195,10 +200,12 @@ public partial class MainForm
         {
             SetAutoBusy(true, "자동 검열 준비 중...");
             progressWindow.Show(this);
-            progressWindow.UpdateProgress(new AutoMosaicProgress(1, "이미지 준비 중..."));
+            progressWindow.UpdateProgress(new AutoMosaicProgress(1, "원본 이미지에서 새로 처리 준비 중..."));
 
-            stage = "임시 PNG 저장";
-            SaveBitmapAsPngDetached(_originalBitmap, input);
+            // Always feed the untouched source bitmap to Python. Changing mask
+            // settings can therefore never stack a new mosaic over an old one.
+            stage = "원본 임시 PNG 저장";
+            SaveBitmapAsPngDetached(source, input);
 
             stage = "Python 검출/정밀 마스킹";
             AutoMosaicResult result = await AutoMosaicEngine.ProcessFileAsync(
@@ -206,24 +213,22 @@ public partial class MainForm
 
             if (result.Status == "undetected" || !File.Exists(output))
             {
-                statusLabel.Text = "자동 검출 완료: 검열 대상 영역 없음";
+                // A fresh run with no detections means the working image must also
+                // become clean source, rather than leaving the previous mask behind.
+                ResetWorkingFromSource(saveUndo: true);
+                statusLabel.Text = $"자동 검출 완료: 검열 대상 영역 없음{ProviderSuffix(result.Provider)}";
                 if (showUndetectedMessage)
                 {
-                    MessageBox.Show("검출된 영역이 없습니다.", "자동 모자이크",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("검출된 영역이 없습니다. 이전 자동 처리는 제거하고 원본으로 되돌렸습니다.",
+                        "자동 모자이크", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 return;
             }
 
             stage = "검열 결과 이미지 로드";
             Bitmap processed = LoadBitmapDetached(output);
-            SaveStateToUndo();
-            pictureBox.Image = null;
-            _originalBitmap.Dispose();
-            _originalBitmap = processed;
-            pictureBox.Image = _originalBitmap;
-            pictureBox.Invalidate();
-            statusLabel.Text = $"자동 검열 완료: {result.Count}개 영역";
+            ReplaceWorkingBitmap(processed, saveUndo: true);
+            statusLabel.Text = $"자동 검열 완료: {result.Count}개 영역{ProviderSuffix(result.Provider)}";
 
             if (!string.IsNullOrWhiteSpace(result.Warning))
             {
@@ -269,6 +274,9 @@ public partial class MainForm
         string name = new DirectoryInfo(inputDir).Name;
         string outputDir = Path.Combine(parent, name + "_mosaic");
 
+        _lastBatchInputDir = inputDir;
+        _lastBatchOutputDir = Path.GetFullPath(outputDir);
+
         using var progressWindow = new AutoMosaicProgressForm("폴더 전체 자동 검열 진행");
         var progress = new Progress<AutoMosaicProgress>(p =>
         {
@@ -287,7 +295,7 @@ public partial class MainForm
             AutoMosaicResult result = await AutoMosaicEngine.ProcessFolderAsync(
                 inputDir, outputDir, _autoSettings, progress);
 
-            statusLabel.Text = $"전체 처리 완료: 처리 {result.Processed}, 미검출 {result.Undetected}, 오류 {result.Errors}";
+            statusLabel.Text = $"전체 처리 완료: 처리 {result.Processed}, 미검출 {result.Undetected}, 오류 {result.Errors}{ProviderSuffix(result.Provider)}";
 
             if (openOutputFolder && Directory.Exists(outputDir))
             {
@@ -300,12 +308,14 @@ public partial class MainForm
 
                 if (firstOutput != null)
                 {
-                    LoadImageDetached(firstOutput);
+                    LoadImageDetached(firstOutput, ResolveSourcePathForWorkingFile(firstOutput));
                     SelectFolderImage(firstOutput);
                 }
             }
 
             string message = $"출력 폴더:\n{outputDir}\n\n처리: {result.Processed}개\n미검출: {result.Undetected}개\n오류: {result.Errors}개\n검출 영역: {result.Count}개";
+            if (!string.IsNullOrWhiteSpace(result.Provider))
+                message += $"\n실행 장치: {result.Provider}";
             if (!string.IsNullOrWhiteSpace(result.Warning))
                 message += $"\n\n경고: {result.Warning}";
 
@@ -325,6 +335,33 @@ public partial class MainForm
         }
     }
 
+    private string? ResolveSourcePathForWorkingFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(_lastBatchInputDir)
+            || string.IsNullOrWhiteSpace(_lastBatchOutputDir))
+            return null;
+
+        string fullPath = Path.GetFullPath(path);
+        string? folder = Path.GetDirectoryName(fullPath);
+        if (!string.Equals(folder, _lastBatchOutputDir, StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        string candidate = Path.Combine(_lastBatchInputDir, Path.GetFileName(fullPath));
+        return File.Exists(candidate) ? candidate : null;
+    }
+
+    private bool IsBatchOutputPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(_lastBatchOutputDir)) return false;
+        string? folder = Path.GetDirectoryName(Path.GetFullPath(path));
+        return string.Equals(folder, _lastBatchOutputDir, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ProviderSuffix(string? provider)
+    {
+        return string.IsNullOrWhiteSpace(provider) ? string.Empty : $" · {provider}";
+    }
+
     private void MenuAutoSettings_Click(object? sender, EventArgs e)
     {
         using var dlg = new AutoMosaicSettingsDialog(_autoSettings);
@@ -334,7 +371,7 @@ public partial class MainForm
             int enabled = (_autoSettings.IncludeNipple ? 1 : 0)
                 + (_autoSettings.IncludeAnus ? 1 : 0)
                 + (_autoSettings.IncludeTesticles ? 1 : 0);
-            statusLabel.Text = $"자동 모자이크 설정: {_autoSettings.Mode} / 추가 검출 {enabled}/3";
+            statusLabel.Text = $"자동 모자이크 설정: {_autoSettings.Mode} / 추가 검출 {enabled}/3 - 다시 처리하면 원본에서 새로 적용됩니다.";
         }
     }
 
