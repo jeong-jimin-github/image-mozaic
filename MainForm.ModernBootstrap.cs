@@ -8,5 +8,6 @@ public partial class MainForm
     {
         base.OnLoad(e);
         InitializeModernUi();
+        StartModernStatusSync();
     }
 }
