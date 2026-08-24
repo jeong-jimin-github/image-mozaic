@@ -1,6 +1,5 @@
 using System;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -88,19 +87,27 @@ public partial class MainForm
     {
         if (_autoBusy || e.Data == null) return;
 
-        string[]? paths = e.Data.GetData(DataFormats.FileDrop) as string[];
-        if (paths == null || paths.Length == 0) return;
-
-        string? folder = paths.FirstOrDefault(Directory.Exists);
-        if (folder != null)
+        try
         {
-            await OpenFolderAsync(folder, autoOpen: true);
-            return;
-        }
+            string[]? paths = e.Data.GetData(DataFormats.FileDrop) as string[];
+            if (paths == null || paths.Length == 0) return;
 
-        string? firstImage = paths.FirstOrDefault(IsSupportedImportFile);
-        if (firstImage != null)
-            await ImportAndAutoCensorAsync(firstImage);
+            string? folder = paths.FirstOrDefault(Directory.Exists);
+            if (folder != null)
+            {
+                await OpenFolderAsync(folder, autoOpen: true);
+                return;
+            }
+
+            string? firstImage = paths.FirstOrDefault(IsSupportedImportFile);
+            if (firstImage != null)
+                await ImportAndAutoCensorAsync(firstImage);
+        }
+        catch (Exception ex)
+        {
+            WriteAutoDiagnostic("drag-drop", null, ex);
+            ShowAutoError(ex);
+        }
     }
 
     private static bool IsSupportedImportFile(string path)
@@ -116,7 +123,7 @@ public partial class MainForm
             if (refreshFolderPreview)
                 await RefreshFolderPreviewForFileAsync(path);
 
-            LoadImage(path);
+            LoadImageDetached(path);
             SelectFolderImage(path);
 
             statusLabel.Text = "이미지 가져오기 완료 - 자동 검열을 시작합니다...";
@@ -124,6 +131,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
+            WriteAutoDiagnostic("import-auto-censor", path, ex);
             ShowAutoError(ex);
         }
     }
@@ -136,6 +144,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
+            WriteAutoDiagnostic("manual-auto-censor", _currentFilePath, ex);
             ShowAutoError(ex);
         }
     }
@@ -172,7 +181,7 @@ public partial class MainForm
             progressWindow.Show(this);
             progressWindow.UpdateProgress(new AutoMosaicProgress(1, "이미지 준비 중..."));
 
-            _originalBitmap.Save(input, ImageFormat.Png);
+            SaveBitmapAsPngDetached(_originalBitmap, input);
             AutoMosaicResult result = await AutoMosaicEngine.ProcessFileAsync(
                 input, output, _autoSettings, progress);
 
@@ -187,9 +196,10 @@ public partial class MainForm
                 return;
             }
 
-            using var loaded = new Bitmap(output);
-            var processed = new Bitmap(loaded);
+            using Bitmap loaded = LoadBitmapDetached(output);
+            var processed = (Bitmap)loaded.Clone();
             SaveStateToUndo();
+            pictureBox.Image = null;
             _originalBitmap.Dispose();
             _originalBitmap = processed;
             pictureBox.Image = _originalBitmap;
@@ -201,6 +211,11 @@ public partial class MainForm
                 MessageBox.Show(result.Warning, "자동 모자이크 경고",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+        catch (Exception ex)
+        {
+            WriteAutoDiagnostic("auto-censor-processing", _currentFilePath, ex);
+            throw;
         }
         finally
         {
@@ -258,6 +273,7 @@ public partial class MainForm
         }
         catch (Exception ex)
         {
+            WriteAutoDiagnostic("batch-auto-censor", inputDir, ex);
             ShowAutoError(ex);
         }
         finally
@@ -293,8 +309,11 @@ public partial class MainForm
     private void ShowAutoError(Exception ex)
     {
         statusLabel.Text = "자동 모자이크 처리 실패";
-        MessageBox.Show(ex.Message, "자동 모자이크 오류",
-            MessageBoxButtons.OK, MessageBoxIcon.Error);
+        MessageBox.Show(
+            $"{ex.Message}\n\n상세 로그: %LOCALAPPDATA%\\ImageMosaicEditor\\auto-error.log",
+            "자동 모자이크 오류",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error);
     }
 
     private static void TryDeleteDirectory(string path)
