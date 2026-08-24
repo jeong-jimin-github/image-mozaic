@@ -19,6 +19,7 @@ internal sealed class AutoMosaicResult
     [JsonPropertyName("processed")] public int Processed { get; set; }
     [JsonPropertyName("undetected")] public int Undetected { get; set; }
     [JsonPropertyName("errors")] public int Errors { get; set; }
+    [JsonPropertyName("provider")] public string? Provider { get; set; }
     [JsonPropertyName("warning")] public string? Warning { get; set; }
     [JsonPropertyName("error")] public string? Error { get; set; }
 }
