@@ -1,0 +1,4 @@
+dghs-imgutils
+Pillow
+# Optional: required only for NTD11 detector/model support
+# ultralytics

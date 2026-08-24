@@ -1,0 +1,10 @@
+bin/
+obj/
+publish-test/
+.vs/
+*.user
+*.suo
+python/__pycache__/
+python/**/*.pyc
+python/models/*.pt
+!python/models/README.md

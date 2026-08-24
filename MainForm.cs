@@ -26,9 +26,14 @@ namespace ImageMosaicEditor
         private readonly LinkedList<Bitmap> _redoStack = new LinkedList<Bitmap>();
         private const int MaxStackSize = 20;
 
+        // Automatic anime/CG censoring settings (Python detection bridge)
+        private AutoMosaicSettings _autoSettings = new();
+        private bool _autoBusy;
+
         public MainForm()
         {
             InitializeComponent();
+            InitializeAutoMosaicMenu();
         }
 
         // ── File > Open ──────────────────────────────────────────────────────────
