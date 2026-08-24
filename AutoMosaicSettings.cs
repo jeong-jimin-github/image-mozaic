@@ -6,11 +6,11 @@ internal sealed class AutoMosaicSettings
     public int Strength { get; set; } = 20;
     public double Confidence { get; set; } = 0.25;
     public int Padding { get; set; } = 10;
-    public string Detector { get; set; } = "auto";
-    public bool IncludeNipple { get; set; }
-    public bool IncludeAnus { get; set; }
-    public bool IncludeTesticles { get; set; }
-    public string Ntd11ModelPath { get; set; } = string.Empty;
+
+    // Additional detection is enabled by default for all supported targets.
+    public bool IncludeNipple { get; set; } = true;
+    public bool IncludeAnus { get; set; } = true;
+    public bool IncludeTesticles { get; set; } = true;
 
     public AutoMosaicSettings Clone() => (AutoMosaicSettings)MemberwiseClone();
 }
