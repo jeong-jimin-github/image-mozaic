@@ -54,10 +54,6 @@ public partial class MainForm
         editMenu.DropDownItems.Add(_eraserMenuItem);
         editMenu.DropDownItems.Add(eraserSizeMenu);
 
-        // These handlers run after the original mosaic-selection handlers that
-        // were attached by the designer. In eraser mode MouseDown cancels the
-        // selection drag immediately, so the original MouseMove/MouseUp path is
-        // effectively disabled for the rest of the stroke.
         pictureBox.MouseDown += Eraser_MouseDown;
         pictureBox.MouseMove += Eraser_MouseMove;
         pictureBox.MouseUp += Eraser_MouseUp;
@@ -81,6 +77,7 @@ public partial class MainForm
         statusLabel.Text = mode == EditToolMode.MaskEraser
             ? "마스크 지우개 모드 - 잘못 처리된 부분을 드래그하면 원본으로 복원됩니다."
             : "모자이크 선택 모드 - 드래그로 수동 모자이크 영역을 선택하세요.";
+        UpdateModernToolSelection();
         pictureBox.Invalidate();
     }
 
