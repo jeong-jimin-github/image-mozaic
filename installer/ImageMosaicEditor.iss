@@ -15,6 +15,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist
 OutputBaseFilename=ImageMosaicEditor-Setup-win-x64
+SetupIconFile=..\assets\app.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
