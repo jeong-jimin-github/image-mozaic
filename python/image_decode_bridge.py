@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import os
+import struct
 from pathlib import Path
 
 from PIL import Image, ImageOps
+
+MAGIC = b"IMBG"
 
 
 def parse_args():
@@ -31,10 +34,17 @@ def main():
             image.load()
             if image.mode != "RGBA":
                 image = image.convert("RGBA")
-            image.save(temp, format="PNG", compress_level=3, optimize=False)
+
+            width, height = image.size
+            pixels = image.tobytes("raw", "BGRA")
+
+        with temp.open("wb") as fp:
+            fp.write(MAGIC)
+            fp.write(struct.pack("<II", width, height))
+            fp.write(pixels)
 
         os.replace(temp, target)
-        print(f"{image.width}x{image.height}")
+        print(f"{width}x{height}")
     finally:
         try:
             if temp.exists():
