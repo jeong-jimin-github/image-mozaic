@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -10,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 
 namespace ImageMosaicEditor;
+
+internal sealed record AutoMosaicProgress(int Value, string Message);
 
 internal sealed class AutoMosaicResult
 {
@@ -31,7 +32,10 @@ internal static class AutoMosaicEngine
     private static string BundledPythonPath => Path.Combine(AppContext.BaseDirectory, "python-runtime", "python.exe");
 
     public static async Task<AutoMosaicResult> ProcessFileAsync(
-        string inputPath, string outputPath, AutoMosaicSettings settings,
+        string inputPath,
+        string outputPath,
+        AutoMosaicSettings settings,
+        IProgress<AutoMosaicProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var args = new List<string>
@@ -39,11 +43,14 @@ internal static class AutoMosaicEngine
             ScriptPath, "--input-file", inputPath, "--output-file", outputPath
         };
         AppendSettings(args, settings);
-        return await RunBridgeAsync(args, cancellationToken);
+        return await RunBridgeAsync(args, progress, cancellationToken);
     }
 
     public static async Task<AutoMosaicResult> ProcessFolderAsync(
-        string inputDirectory, string outputDirectory, AutoMosaicSettings settings,
+        string inputDirectory,
+        string outputDirectory,
+        AutoMosaicSettings settings,
+        IProgress<AutoMosaicProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var args = new List<string>
@@ -52,7 +59,7 @@ internal static class AutoMosaicEngine
             "--output-dir", outputDirectory, "--copy-undetected"
         };
         AppendSettings(args, settings);
-        return await RunBridgeAsync(args, cancellationToken);
+        return await RunBridgeAsync(args, progress, cancellationToken);
     }
 
     private static void AppendSettings(List<string> args, AutoMosaicSettings settings)
@@ -61,18 +68,17 @@ internal static class AutoMosaicEngine
             "--mode", settings.Mode,
             "--strength", settings.Strength.ToString(System.Globalization.CultureInfo.InvariantCulture),
             "--confidence", settings.Confidence.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "--padding", settings.Padding.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            "--detector", settings.Detector
+            "--padding", settings.Padding.ToString(System.Globalization.CultureInfo.InvariantCulture)
         ]);
         if (settings.IncludeNipple) args.Add("--include-nipple");
         if (settings.IncludeAnus) args.Add("--include-anus");
         if (settings.IncludeTesticles) args.Add("--include-testicles");
-        if (!string.IsNullOrWhiteSpace(settings.Ntd11ModelPath))
-            args.AddRange(["--ntd11-model", settings.Ntd11ModelPath]);
     }
 
     private static async Task<AutoMosaicResult> RunBridgeAsync(
-        List<string> bridgeArgs, CancellationToken cancellationToken)
+        List<string> bridgeArgs,
+        IProgress<AutoMosaicProgress>? progress,
+        CancellationToken cancellationToken)
     {
         if (!File.Exists(ScriptPath))
             throw new FileNotFoundException("자동 검출 Python 스크립트를 찾을 수 없습니다.", ScriptPath);
@@ -82,29 +88,66 @@ internal static class AutoMosaicEngine
         args.AddRange(python.PrefixArguments);
         args.AddRange(bridgeArgs);
 
-        var result = await RunProcessAsync(python.FileName, args, cancellationToken);
-        string json = result.StdOut
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-            .LastOrDefault(line => line.TrimStart().StartsWith('{')) ?? string.Empty;
+        ProcessStartInfo psi = CreateStartInfo(python.FileName, args);
+        using var process = new Process { StartInfo = psi };
+        if (!process.Start())
+            throw new InvalidOperationException($"프로세스를 시작할 수 없습니다: {python.FileName}");
+
+        Task<string> stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        var stdoutLog = new StringBuilder();
+        string? resultJson = null;
+
+        while (true)
+        {
+            string? line = await process.StandardOutput.ReadLineAsync(cancellationToken);
+            if (line is null) break;
+            stdoutLog.AppendLine(line);
+
+            try
+            {
+                using JsonDocument doc = JsonDocument.Parse(line);
+                JsonElement root = doc.RootElement;
+                if (root.TryGetProperty("type", out JsonElement type) && type.GetString() == "progress")
+                {
+                    int value = root.TryGetProperty("value", out JsonElement v) ? v.GetInt32() : 0;
+                    string message = root.TryGetProperty("message", out JsonElement m)
+                        ? m.GetString() ?? "처리 중..."
+                        : "처리 중...";
+                    progress?.Report(new AutoMosaicProgress(value, message));
+                }
+                else if (root.TryGetProperty("status", out _))
+                {
+                    resultJson = line;
+                }
+            }
+            catch (JsonException)
+            {
+                // Non-JSON diagnostic output is preserved in stdoutLog.
+            }
+        }
+
+        await process.WaitForExitAsync(cancellationToken);
+        string stderr = await stderrTask;
 
         AutoMosaicResult? parsed = null;
-        if (!string.IsNullOrWhiteSpace(json))
+        if (!string.IsNullOrWhiteSpace(resultJson))
         {
-            try { parsed = JsonSerializer.Deserialize<AutoMosaicResult>(json); }
+            try { parsed = JsonSerializer.Deserialize<AutoMosaicResult>(resultJson); }
             catch (JsonException) { }
         }
 
-        if (result.ExitCode != 0)
+        if (process.ExitCode != 0)
         {
-            string message = parsed?.Error ?? result.StdErr.Trim();
-            if (string.IsNullOrWhiteSpace(message)) message = result.StdOut.Trim();
+            string message = parsed?.Error ?? stderr.Trim();
+            if (string.IsNullOrWhiteSpace(message)) message = stdoutLog.ToString().Trim();
             throw new InvalidOperationException(string.IsNullOrWhiteSpace(message)
-                ? $"자동 모자이크 엔진이 종료 코드 {result.ExitCode}로 실패했습니다."
+                ? $"자동 모자이크 엔진이 종료 코드 {process.ExitCode}로 실패했습니다."
                 : message);
         }
 
+        progress?.Report(new AutoMosaicProgress(100, "처리 완료"));
         return parsed ?? throw new InvalidOperationException(
-            $"자동 모자이크 엔진의 응답을 해석할 수 없습니다.\n{result.StdErr}\n{result.StdOut}".Trim());
+            $"자동 모자이크 엔진의 응답을 해석할 수 없습니다.\n{stderr}\n{stdoutLog}".Trim());
     }
 
     private static async Task<PythonCommand> FindPythonAsync(CancellationToken cancellationToken)
@@ -149,14 +192,10 @@ internal static class AutoMosaicEngine
         }
 
         throw new InvalidOperationException(
-            "번들 Python 런타임을 찾을 수 없습니다. Release ZIP을 다시 내려받거나 Python 3.10 이상을 설치하세요.");
+            "번들 Python 런타임을 찾을 수 없습니다. Release 파일을 다시 내려받거나 Python 3.10 이상을 설치하세요.");
     }
 
-    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessAsync(
-        string fileName,
-        IEnumerable<string> arguments,
-        CancellationToken cancellationToken,
-        bool throwOnStartFailure = true)
+    private static ProcessStartInfo CreateStartInfo(string fileName, IEnumerable<string> arguments)
     {
         var psi = new ProcessStartInfo
         {
@@ -173,7 +212,16 @@ internal static class AutoMosaicEngine
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONNOUSERSITE"] = "1";
         foreach (string arg in arguments) psi.ArgumentList.Add(arg);
+        return psi;
+    }
 
+    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunProcessAsync(
+        string fileName,
+        IEnumerable<string> arguments,
+        CancellationToken cancellationToken,
+        bool throwOnStartFailure = true)
+    {
+        var psi = CreateStartInfo(fileName, arguments);
         using var process = new Process { StartInfo = psi };
         try
         {
