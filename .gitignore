@@ -7,3 +7,4 @@ dist/
 *.suo
 python/__pycache__/
 python/**/*.pyc
+assets/app.ico
