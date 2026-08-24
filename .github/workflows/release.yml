@@ -64,7 +64,6 @@ jobs:
         Set-Content -Path $pthFile.FullName -Value $pth -Encoding ascii
 
         New-Item -ItemType Directory -Force -Path $sitePackages | Out-Null
-        python -m pip install --upgrade pip
         python -m pip install --disable-pip-version-check --no-cache-dir `
           -r ./python/requirements.txt `
           --target $sitePackages
@@ -74,7 +73,7 @@ jobs:
 
         $env:PYTHONUTF8 = '1'
         $env:PYTHONNOUSERSITE = '1'
-        & (Join-Path $runtimeDir 'python.exe') -c "from PIL import Image; from imgutils.detect import detect_censors; print('Bundled Python dependencies OK')"
+        & (Join-Path $runtimeDir 'python.exe') -c "import onnxruntime; from PIL import Image; from imgutils.detect import detect_censors; import natsort, tqdm; print('Bundled Python dependencies OK')"
         if ($LASTEXITCODE -ne 0) { throw 'Bundled Python dependency smoke test failed.' }
 
         Copy-Item -Path $runtimeDir -Destination $publishRuntime -Recurse -Force
@@ -89,7 +88,9 @@ jobs:
     - name: Zip Artifact
       shell: pwsh
       run: |
-        Compress-Archive -Path ./publish/* -DestinationPath ImageMosaicEditor-win-x64.zip -CompressionLevel Optimal
+        if (Test-Path './ImageMosaicEditor-win-x64.zip') { Remove-Item './ImageMosaicEditor-win-x64.zip' -Force }
+        7z a -tzip -mx=7 ImageMosaicEditor-win-x64.zip ./publish/*
+        if ($LASTEXITCODE -ne 0) { throw '7-Zip packaging failed.' }
 
     - name: Determine or create tag
       id: tag
