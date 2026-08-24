@@ -18,6 +18,7 @@ public partial class MainForm
     private string? _currentFolder;
     private bool _folderListUpdating;
     private bool _folderSelectionBusy;
+    private bool _folderLayoutBusy;
 
     private void InitializeFolderBrowserPanel()
     {
@@ -27,7 +28,8 @@ public partial class MainForm
 
         var split = new SplitContainer
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.None,
+            Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             FixedPanel = FixedPanel.Panel2,
             IsSplitterFixed = false,
             SplitterWidth = 5
@@ -49,7 +51,9 @@ public partial class MainForm
             Padding = new Padding(10, 0, 8, 0),
             Text = "폴더를 드래그해 놓으세요.",
             TextAlign = ContentAlignment.MiddleLeft,
-            AutoEllipsis = true
+            AutoEllipsis = true,
+            BackColor = SystemColors.Control,
+            ForeColor = SystemColors.ControlText
         };
 
         var list = new ListView
@@ -76,24 +80,51 @@ public partial class MainForm
             Padding = new Padding(0)
         };
         sidebarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         sidebarLayout.Controls.Add(header, 0, 0);
         sidebarLayout.Controls.Add(list, 0, 1);
         split.Panel2.Controls.Add(sidebarLayout);
 
         Controls.Add(split);
-        Controls.SetChildIndex(menuStrip, 0);
-        Controls.SetChildIndex(statusStrip, 1);
-        Controls.SetChildIndex(split, 2);
+        split.SendToBack();
+        menuStrip.BringToFront();
+        statusStrip.BringToFront();
 
         _mainSplit = split;
         _folderList = list;
         _folderThumbnails = thumbnails;
         _folderHeader = header;
 
-        Shown += (_, _) => AdjustFolderSplitter();
-        SizeChanged += (_, _) => AdjustFolderSplitter();
+        // Do not rely on Dock=Fill here. The form's existing MenuStrip and
+        // StatusStrip can overlay a dynamically-added Fill control depending on
+        // z-order/DPI. Explicit bounds guarantee that the folder header always
+        // begins below the menu and ends above the status bar.
+        Shown += (_, _) => LayoutFolderWorkspace();
+        SizeChanged += (_, _) => LayoutFolderWorkspace();
+        Layout += (_, _) => LayoutFolderWorkspace();
+    }
+
+    private void LayoutFolderWorkspace()
+    {
+        if (_folderLayoutBusy || _mainSplit == null || _mainSplit.IsDisposed) return;
+
+        _folderLayoutBusy = true;
+        try
+        {
+            int top = Math.Max(0, menuStrip.Bottom);
+            int bottom = statusStrip.Top;
+            if (bottom <= top)
+                bottom = Math.Max(top + 1, ClientSize.Height - statusStrip.Height);
+
+            int height = Math.Max(1, bottom - top);
+            _mainSplit.SetBounds(0, top, Math.Max(1, ClientSize.Width), height);
+            AdjustFolderSplitter();
+        }
+        finally
+        {
+            _folderLayoutBusy = false;
+        }
     }
 
     private void AdjustFolderSplitter()
