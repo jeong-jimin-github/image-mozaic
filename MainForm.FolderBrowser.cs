@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -24,10 +25,6 @@ public partial class MainForm
 
         Controls.Remove(pictureBox);
 
-        // Do not set Panel1MinSize / Panel2MinSize here. A newly-created
-        // SplitContainer still has its tiny default size, and assigning minimum
-        // panel sizes larger than that can throw ArgumentOutOfRangeException
-        // before the form is ever displayed.
         var split = new SplitContainer
         {
             Dock = DockStyle.Fill,
@@ -39,21 +36,20 @@ public partial class MainForm
         pictureBox.Dock = DockStyle.Fill;
         split.Panel1.Controls.Add(pictureBox);
 
-        var sidePanel = new Panel { Dock = DockStyle.Fill };
-        var header = new Label
-        {
-            Dock = DockStyle.Top,
-            Height = 46,
-            Padding = new Padding(10, 7, 8, 4),
-            Text = "폴더를 드래그해 놓으세요.",
-            TextAlign = ContentAlignment.MiddleLeft,
-            AutoEllipsis = true
-        };
-
         var thumbnails = new ImageList
         {
             ImageSize = new Size(96, 72),
             ColorDepth = ColorDepth.Depth32Bit
+        };
+
+        var header = new Label
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0),
+            Padding = new Padding(10, 0, 8, 0),
+            Text = "폴더를 드래그해 놓으세요.",
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true
         };
 
         var list = new ListView
@@ -66,13 +62,25 @@ public partial class MainForm
             HideSelection = false,
             FullRowSelect = true,
             BorderStyle = BorderStyle.FixedSingle,
-            AllowDrop = true
+            AllowDrop = true,
+            ShowItemToolTips = true
         };
         list.SelectedIndexChanged += FolderList_SelectedIndexChanged;
 
-        sidePanel.Controls.Add(list);
-        sidePanel.Controls.Add(header);
-        split.Panel2.Controls.Add(sidePanel);
+        var sidebarLayout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 2,
+            Margin = new Padding(0),
+            Padding = new Padding(0)
+        };
+        sidebarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        sidebarLayout.Controls.Add(header, 0, 0);
+        sidebarLayout.Controls.Add(list, 0, 1);
+        split.Panel2.Controls.Add(sidebarLayout);
 
         Controls.Add(split);
         Controls.SetChildIndex(menuStrip, 0);
@@ -84,23 +92,18 @@ public partial class MainForm
         _folderThumbnails = thumbnails;
         _folderHeader = header;
 
-        // SplitterDistance must be set only after WinForms has calculated the
-        // actual docked size. This avoids a startup exception on portable builds,
-        // high-DPI displays, and unusually small initial window sizes.
-        Shown += (_, _) => ConfigureFolderSplitter();
-        Resize += (_, _) => KeepFolderSplitterValid();
+        Shown += (_, _) => AdjustFolderSplitter();
+        SizeChanged += (_, _) => AdjustFolderSplitter();
     }
 
-    private void ConfigureFolderSplitter()
+    private void AdjustFolderSplitter()
     {
-        if (_mainSplit == null || _mainSplit.IsDisposed) return;
+        if (_mainSplit == null || _mainSplit.IsDisposed || _mainSplit.Width <= 0) return;
 
-        int width = _mainSplit.ClientSize.Width;
-        if (width <= _mainSplit.SplitterWidth + 80) return;
-
-        int desiredRight = Math.Clamp(270, 180, Math.Max(180, width / 2));
-        int distance = width - desiredRight - _mainSplit.SplitterWidth;
-        distance = Math.Clamp(distance, 80, Math.Max(80, width - _mainSplit.SplitterWidth - 80));
+        int sidebarWidth = Math.Clamp((int)(_mainSplit.Width * 0.30), 240, 330);
+        int distance = _mainSplit.Width - sidebarWidth - _mainSplit.SplitterWidth;
+        int maxDistance = Math.Max(80, _mainSplit.Width - _mainSplit.SplitterWidth - 80);
+        distance = Math.Clamp(distance, 80, maxDistance);
 
         try
         {
@@ -108,23 +111,8 @@ public partial class MainForm
         }
         catch (ArgumentOutOfRangeException)
         {
-            // Layout may still be settling on the first DPI/layout pass.
-            BeginInvoke(new Action(KeepFolderSplitterValid));
+            // Layout can transiently report a smaller width during DPI/form changes.
         }
-    }
-
-    private void KeepFolderSplitterValid()
-    {
-        if (_mainSplit == null || _mainSplit.IsDisposed) return;
-
-        int width = _mainSplit.ClientSize.Width;
-        int maxDistance = width - _mainSplit.SplitterWidth - 80;
-        if (maxDistance < 80) return;
-
-        if (_mainSplit.SplitterDistance < 80)
-            _mainSplit.SplitterDistance = 80;
-        else if (_mainSplit.SplitterDistance > maxDistance)
-            _mainSplit.SplitterDistance = maxDistance;
     }
 
     private async Task OpenFolderAsync(string folder, string? preferredImage = null, bool autoOpen = true)
@@ -152,7 +140,7 @@ public partial class MainForm
                 try
                 {
                     using Bitmap thumb = CreateFolderThumbnail(path, _folderThumbnails.ImageSize);
-                    _folderThumbnails.Images.Add(new Bitmap(thumb));
+                    _folderThumbnails.Images.Add((Bitmap)thumb.Clone());
 
                     var item = new ListViewItem(Path.GetFileName(path), _folderThumbnails.Images.Count - 1)
                     {
@@ -161,9 +149,9 @@ public partial class MainForm
                     };
                     _folderList.Items.Add(item);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Skip unreadable images without breaking the folder view.
+                    WriteAutoDiagnostic("thumbnail", path, ex);
                 }
 
                 if (i > 0 && i % 8 == 0)
@@ -249,8 +237,8 @@ public partial class MainForm
 
     private static Bitmap CreateFolderThumbnail(string path, Size size)
     {
-        using var source = new Bitmap(path);
-        var thumb = new Bitmap(size.Width, size.Height);
+        using Bitmap source = LoadBitmapDetached(path);
+        var thumb = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppArgb);
 
         using Graphics g = Graphics.FromImage(thumb);
         g.Clear(Color.FromArgb(36, 36, 36));
