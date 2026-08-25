@@ -11,9 +11,11 @@ public partial class MainForm
     {
         if (_modernStatusTimer != null) return;
 
-        _modernStatusTimer = new Timer { Interval = 500 };
+        _modernStatusTimer = new Timer { Interval = 350 };
         _modernStatusTimer.Tick += (_, _) =>
         {
+            RefreshModernStatusDetails();
+
             string text = statusLabel.Text ?? string.Empty;
             if (text.Contains("GPU (CUDA)", StringComparison.OrdinalIgnoreCase)
                 || text.Contains("CUDAExecutionProvider", StringComparison.OrdinalIgnoreCase))
