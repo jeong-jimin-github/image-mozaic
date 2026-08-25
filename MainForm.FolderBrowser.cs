@@ -17,6 +17,7 @@ public partial class MainForm
     private Label? _folderHeader;
     private Label? _folderCountBadge;
     private Label? _folderPathHint;
+    private Label? _folderEmptyHint;
     private string? _currentFolder;
     private bool _folderListUpdating;
     private bool _folderSelectionBusy;
@@ -57,10 +58,7 @@ public partial class MainForm
         headerBar.Paint += (_, e) =>
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var folderPen = new Pen(Color.FromArgb(25, 122, 234), 2.2f)
-            {
-                LineJoin = LineJoin.Round
-            };
+            using var folderPen = new Pen(Color.FromArgb(25, 122, 234), 2.2f) { LineJoin = LineJoin.Round };
             using var folderFill = new SolidBrush(Color.FromArgb(230, 242, 255));
             var folderRect = new Rectangle(8, 14, 28, 20);
             e.Graphics.FillRectangle(folderFill, folderRect);
@@ -96,12 +94,8 @@ public partial class MainForm
             ForeColor = Color.White,
             Font = new Font("Segoe UI Semibold", 8.5f, FontStyle.Bold)
         };
-        countBadge.Paint += (_, e) =>
-        {
-            using var path = RoundedRect(countBadge.ClientRectangle, 11);
-            countBadge.Region?.Dispose();
-            countBadge.Region = new Region(path);
-        };
+        countBadge.Resize += (_, _) => ApplyBadgeRegion(countBadge);
+        ApplyBadgeRegion(countBadge);
 
         var tileButton = CreateViewModeButton("▦", true);
         var listButton = CreateViewModeButton("☷", false);
@@ -123,7 +117,7 @@ public partial class MainForm
         var dropCard = new SidebarDropCard
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(10, 10, 10, 10),
+            Margin = new Padding(10),
             Padding = new Padding(12),
             BackColor = Color.White,
             AllowDrop = true
@@ -196,10 +190,10 @@ public partial class MainForm
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.FromArgb(181, 188, 199),
             BackColor = Color.White,
-            Font = new Font("Segoe UI", 10.5f)
+            Font = new Font("Segoe UI", 10.5f),
+            Visible = true
         };
         list.Controls.Add(emptyHint);
-        list.ClientSizeChanged += (_, _) => emptyHint.Visible = list.Items.Count == 0;
 
         tileButton.Click += (_, _) =>
         {
@@ -264,10 +258,20 @@ public partial class MainForm
         _folderHeader = header;
         _folderCountBadge = countBadge;
         _folderPathHint = pathHint;
+        _folderEmptyHint = emptyHint;
 
         Shown += (_, _) => LayoutFolderWorkspace();
         SizeChanged += (_, _) => LayoutFolderWorkspace();
         Layout += (_, _) => LayoutFolderWorkspace();
+    }
+
+    private static void ApplyBadgeRegion(Label badge)
+    {
+        if (badge.Width <= 0 || badge.Height <= 0) return;
+        using GraphicsPath path = RoundedRect(new Rectangle(0, 0, badge.Width, badge.Height), Math.Min(11, badge.Height / 2));
+        Region? old = badge.Region;
+        badge.Region = new Region(path);
+        old?.Dispose();
     }
 
     private static Button CreateViewModeButton(string text, bool selected)
@@ -399,6 +403,8 @@ public partial class MainForm
             _folderCountBadge.Text = $"{_folderList.Items.Count}개";
         if (_folderPathHint != null)
             _folderPathHint.Text = folderName;
+        if (_folderEmptyHint != null)
+            _folderEmptyHint.Visible = _folderList.Items.Count == 0;
 
         string? target = preferredImage;
         if (target == null || !files.Contains(target, StringComparer.OrdinalIgnoreCase))
