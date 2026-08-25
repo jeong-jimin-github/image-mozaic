@@ -1,6 +1,8 @@
 using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -10,16 +12,23 @@ public partial class MainForm
 {
     private Panel? _modernRibbon;
     private ToolStripStatusLabel? _gpuStatusLabel;
+    private ToolStripStatusLabel? _modeStatusLabel;
+    private ToolStripStatusLabel? _eraserStatusLabel;
+    private ToolStripStatusLabel? _imageSizeStatusLabel;
     private ModernRibbonButton? _selectionRibbonButton;
     private ModernRibbonButton? _eraserRibbonButton;
+    private EraserSizePicker? _eraserSizePicker;
+    private Image? _emptyStateArtwork;
 
-    private static readonly Color UiBackground = Color.FromArgb(244, 247, 251);
+    private static readonly Color UiBackground = Color.FromArgb(245, 247, 250);
     private static readonly Color UiSurface = Color.White;
-    private static readonly Color UiText = Color.FromArgb(25, 39, 66);
-    private static readonly Color UiBlue = Color.FromArgb(28, 123, 235);
-    private static readonly Color UiBlueSoft = Color.FromArgb(229, 241, 255);
-    private static readonly Color CanvasTop = Color.FromArgb(82, 88, 99);
-    private static readonly Color CanvasBottom = Color.FromArgb(62, 67, 77);
+    private static readonly Color UiText = Color.FromArgb(18, 38, 72);
+    private static readonly Color UiMuted = Color.FromArgb(105, 119, 142);
+    private static readonly Color UiBlue = Color.FromArgb(25, 122, 234);
+    private static readonly Color UiBlueSoft = Color.FromArgb(232, 243, 255);
+    private static readonly Color UiBorder = Color.FromArgb(218, 225, 234);
+    private static readonly Color CanvasTop = Color.FromArgb(88, 94, 104);
+    private static readonly Color CanvasBottom = Color.FromArgb(66, 71, 80);
 
     private void InitializeModernUi()
     {
@@ -28,21 +37,21 @@ public partial class MainForm
         {
             BackColor = UiBackground;
             Font = new Font("Segoe UI", 9.5f);
-            MinimumSize = new Size(980, 680);
-            ClientSize = new Size(1280, 820);
+            MinimumSize = new Size(1080, 720);
+            ClientSize = new Size(1360, 860);
 
             StyleMenuStrip();
             AddModernTopMenus();
             CreateModernRibbon();
             StyleWorkspace();
             StyleStatusStrip();
+            LoadEmptyStateArtwork();
 
             pictureBox.Paint += ModernCanvas_Paint;
-            pictureBox.Resize += (_, _) => ApplyRoundedRegion(pictureBox, 16);
             Shown += (_, _) =>
             {
                 LayoutModernChrome();
-                ApplyRoundedRegion(pictureBox, 16);
+                RefreshModernStatusDetails();
             };
             SizeChanged += (_, _) => LayoutModernChrome();
         }
@@ -56,15 +65,15 @@ public partial class MainForm
     {
         menuStrip.AutoSize = false;
         menuStrip.Height = 40;
-        menuStrip.Padding = new Padding(18, 4, 8, 4);
+        menuStrip.Padding = new Padding(24, 3, 10, 3);
         menuStrip.BackColor = UiSurface;
         menuStrip.ForeColor = UiText;
-        menuStrip.Font = new Font("Segoe UI", 10f);
+        menuStrip.Font = new Font("Segoe UI", 10.5f);
         menuStrip.Renderer = new ToolStripProfessionalRenderer(new ModernColorTable());
         foreach (ToolStripItem item in menuStrip.Items)
         {
-            item.Margin = new Padding(2, 0, 8, 0);
-            item.Padding = new Padding(8, 0, 8, 0);
+            item.Margin = new Padding(0, 0, 7, 0);
+            item.Padding = new Padding(10, 0, 10, 0);
         }
     }
 
@@ -102,16 +111,22 @@ public partial class MainForm
         var ribbon = new Panel
         {
             BackColor = UiSurface,
-            Height = 108,
+            Height = 118,
             Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
         };
+        ribbon.Paint += (_, e) =>
+        {
+            using var pen = new Pen(UiBorder);
+            e.Graphics.DrawLine(pen, 0, ribbon.Height - 1, ribbon.Width, ribbon.Height - 1);
+        };
+
         var flow = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = false,
             AutoScroll = true,
-            Padding = new Padding(16, 10, 10, 8),
+            Padding = new Padding(24, 7, 14, 7),
             BackColor = UiSurface
         };
 
@@ -119,18 +134,40 @@ public partial class MainForm
         {
             MenuOpenAndAuto_Click(this, EventArgs.Empty);
             await Task.CompletedTask;
-        }, Color.FromArgb(245, 158, 11)));
+        }, Color.FromArgb(242, 154, 42)));
         flow.Controls.Add(CreateRibbonButton("폴더 열기", ModernIcon.Folder, async () =>
         {
             MenuAutoBatch_Click(this, EventArgs.Empty);
             await Task.CompletedTask;
-        }, Color.FromArgb(245, 158, 11)));
+        }, Color.FromArgb(242, 154, 42)));
         flow.Controls.Add(CreateRibbonSeparator());
-        flow.Controls.Add(CreateRibbonButton("저장", ModernIcon.Save, () => { MenuSave_Click(this, EventArgs.Empty); return Task.CompletedTask; }));
+
+        flow.Controls.Add(CreateRibbonButton("저장", ModernIcon.Save, () =>
+        {
+            MenuSave_Click(this, EventArgs.Empty);
+            return Task.CompletedTask;
+        }));
+        flow.Controls.Add(CreateRibbonButton("다른 이름으로", ModernIcon.SaveAs, () =>
+        {
+            SaveAsModern();
+            return Task.CompletedTask;
+        }));
         flow.Controls.Add(CreateRibbonSeparator());
-        flow.Controls.Add(CreateRibbonButton("실행 취소", ModernIcon.Undo, () => { MenuUndo_Click(this, EventArgs.Empty); return Task.CompletedTask; }, Color.FromArgb(130, 140, 156)));
-        flow.Controls.Add(CreateRibbonButton("다시 실행", ModernIcon.Redo, () => { MenuRedo_Click(this, EventArgs.Empty); return Task.CompletedTask; }, Color.FromArgb(130, 140, 156)));
+
+        flow.Controls.Add(CreateRibbonButton("실행 취소", ModernIcon.Undo, () =>
+        {
+            MenuUndo_Click(this, EventArgs.Empty);
+            RefreshModernStatusDetails();
+            return Task.CompletedTask;
+        }, Color.FromArgb(132, 143, 160)));
+        flow.Controls.Add(CreateRibbonButton("다시 실행", ModernIcon.Redo, () =>
+        {
+            MenuRedo_Click(this, EventArgs.Empty);
+            RefreshModernStatusDetails();
+            return Task.CompletedTask;
+        }, Color.FromArgb(132, 143, 160)));
         flow.Controls.Add(CreateRibbonSeparator());
+
         flow.Controls.Add(CreateRibbonButton("자동 모자이크", ModernIcon.Magic, async () =>
         {
             MenuAutoCurrent_Click(this, EventArgs.Empty);
@@ -152,10 +189,35 @@ public partial class MainForm
             return Task.CompletedTask;
         });
         flow.Controls.Add(_eraserRibbonButton);
-
         flow.Controls.Add(CreateRibbonSeparator());
-        flow.Controls.Add(CreateRibbonButton("설정", ModernIcon.Settings, () => { MenuAutoSettings_Click(this, EventArgs.Empty); return Task.CompletedTask; }));
-        flow.Controls.Add(CreateRibbonButton("도움말", ModernIcon.Help, () => { ShowModernHelp(); return Task.CompletedTask; }));
+
+        _eraserSizePicker = new EraserSizePicker
+        {
+            Width = 220,
+            Height = 94,
+            Margin = new Padding(5, 0, 7, 0),
+            SelectedDiameter = _eraserRadius * 2
+        };
+        _eraserSizePicker.SizeSelected += diameter =>
+        {
+            _eraserRadius = diameter / 2;
+            statusLabel.Text = $"마스크 지우개 크기: {diameter}px";
+            RefreshModernStatusDetails();
+            pictureBox.Invalidate();
+        };
+        flow.Controls.Add(_eraserSizePicker);
+        flow.Controls.Add(CreateRibbonSeparator());
+
+        flow.Controls.Add(CreateRibbonButton("설정", ModernIcon.Settings, () =>
+        {
+            MenuAutoSettings_Click(this, EventArgs.Empty);
+            return Task.CompletedTask;
+        }));
+        flow.Controls.Add(CreateRibbonButton("도움말", ModernIcon.Help, () =>
+        {
+            ShowModernHelp();
+            return Task.CompletedTask;
+        }));
 
         ribbon.Controls.Add(flow);
         Controls.Add(ribbon);
@@ -170,9 +232,9 @@ public partial class MainForm
             Text = text,
             IconKind = icon,
             AccentColor = accent ?? UiBlue,
-            Width = 88,
-            Height = 82,
-            Margin = new Padding(3, 0, 3, 0)
+            Width = text == "다른 이름으로" ? 96 : 86,
+            Height = 96,
+            Margin = new Padding(2, 0, 2, 0)
         };
         button.Click += async (_, _) => await action();
         return button;
@@ -181,10 +243,46 @@ public partial class MainForm
     private static Control CreateRibbonSeparator() => new Panel
     {
         Width = 1,
-        Height = 64,
-        BackColor = Color.FromArgb(228, 233, 240),
-        Margin = new Padding(8, 8, 8, 0)
+        Height = 76,
+        BackColor = UiBorder,
+        Margin = new Padding(10, 8, 10, 0)
     };
+
+    private void SaveAsModern()
+    {
+        if (_originalBitmap == null)
+        {
+            MessageBox.Show("저장할 이미지가 없습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        string initialName = string.IsNullOrWhiteSpace(_currentFilePath)
+            ? "image.png"
+            : Path.GetFileName(_currentFilePath);
+        using var dialog = new SaveFileDialog
+        {
+            Title = "다른 이름으로 저장",
+            FileName = initialName,
+            Filter = "PNG 이미지 (*.png)|*.png|JPEG 이미지 (*.jpg;*.jpeg)|*.jpg;*.jpeg|모든 파일 (*.*)|*.*",
+            AddExtension = true,
+            DefaultExt = "png"
+        };
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        try
+        {
+            string ext = Path.GetExtension(dialog.FileName).ToLowerInvariant();
+            ImageFormat format = ext is ".jpg" or ".jpeg" ? ImageFormat.Jpeg : ImageFormat.Png;
+            _originalBitmap.Save(dialog.FileName, format);
+            _currentFilePath = dialog.FileName;
+            Text = $"이미지 모자이크 편집기 - {Path.GetFileName(dialog.FileName)}";
+            statusLabel.Text = $"저장 완료: {Path.GetFileName(dialog.FileName)}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"저장 중 오류가 발생했습니다:\n{ex.Message}", "저장 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
 
     private void StyleWorkspace()
     {
@@ -195,55 +293,76 @@ public partial class MainForm
             _mainSplit.BackColor = UiBackground;
             _mainSplit.SplitterWidth = 8;
             _mainSplit.Panel1.BackColor = UiBackground;
-            _mainSplit.Panel1.Padding = new Padding(14, 14, 7, 14);
+            _mainSplit.Panel1.Padding = new Padding(12, 12, 6, 12);
             _mainSplit.Panel2.BackColor = UiBackground;
-            _mainSplit.Panel2.Padding = new Padding(7, 14, 14, 14);
+            _mainSplit.Panel2.Padding = new Padding(6, 12, 12, 12);
         }
         if (_folderHeader != null)
         {
             _folderHeader.BackColor = UiSurface;
             _folderHeader.ForeColor = UiText;
-            _folderHeader.Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold);
-            _folderHeader.Padding = new Padding(14, 0, 10, 0);
-            _folderHeader.Text = "이미지 목록  ·  0개";
+            _folderHeader.Font = new Font("Segoe UI Semibold", 11.5f, FontStyle.Bold);
+            _folderHeader.Padding = new Padding(12, 0, 8, 0);
+            _folderHeader.Text = "이미지 목록   0개";
         }
         if (_folderList != null)
         {
             _folderList.BackColor = UiSurface;
             _folderList.ForeColor = UiText;
-            _folderList.Font = new Font("Segoe UI", 9.2f);
+            _folderList.Font = new Font("Segoe UI", 9.3f);
             _folderList.BorderStyle = BorderStyle.None;
-            _folderList.TileSize = new Size(270, 88);
+            _folderList.TileSize = new Size(280, 90);
         }
     }
 
     private void StyleStatusStrip()
     {
         statusStrip.AutoSize = false;
-        statusStrip.Height = 34;
+        statusStrip.Height = 38;
         statusStrip.BackColor = UiSurface;
         statusStrip.ForeColor = UiText;
         statusStrip.SizingGrip = false;
-        statusStrip.Padding = new Padding(10, 0, 10, 0);
+        statusStrip.Padding = new Padding(12, 0, 12, 0);
         statusStrip.Renderer = new ToolStripProfessionalRenderer(new ModernColorTable());
+
         statusLabel.Spring = true;
         statusLabel.TextAlign = ContentAlignment.MiddleLeft;
         statusLabel.ForeColor = UiText;
+        statusLabel.Font = new Font("Segoe UI", 9f);
 
+        _modeStatusLabel = CreateStatusChip("모드: 선택");
+        _eraserStatusLabel = CreateStatusChip($"지우개 크기: {_eraserRadius * 2}px");
+        _imageSizeStatusLabel = CreateStatusChip("---- × ----");
         _gpuStatusLabel = new ToolStripStatusLabel("GPU: 자동 감지")
         {
             AutoSize = true,
-            ForeColor = Color.FromArgb(22, 163, 74),
-            Font = new Font("Segoe UI Semibold", 9f, FontStyle.Bold),
-            Margin = new Padding(14, 0, 2, 0)
+            ForeColor = Color.FromArgb(24, 153, 70),
+            Font = new Font("Segoe UI Semibold", 9.2f, FontStyle.Bold),
+            Margin = new Padding(12, 0, 2, 0),
+            Padding = new Padding(8, 0, 2, 0)
         };
+
+        statusStrip.Items.Add(_modeStatusLabel);
+        statusStrip.Items.Add(_eraserStatusLabel);
+        statusStrip.Items.Add(_imageSizeStatusLabel);
         statusStrip.Items.Add(_gpuStatusLabel);
     }
+
+    private static ToolStripStatusLabel CreateStatusChip(string text) => new(text)
+    {
+        AutoSize = true,
+        ForeColor = UiText,
+        Font = new Font("Segoe UI", 9f),
+        Margin = new Padding(6, 0, 6, 0),
+        Padding = new Padding(10, 0, 10, 0),
+        BorderSides = ToolStripStatusLabelBorderSides.Left,
+        BorderStyle = Border3DStyle.Etched
+    };
 
     private void LayoutModernChrome()
     {
         if (_modernRibbon == null || _modernRibbon.IsDisposed) return;
-        _modernRibbon.SetBounds(0, menuStrip.Bottom, Math.Max(1, ClientSize.Width), 108);
+        _modernRibbon.SetBounds(0, menuStrip.Bottom, Math.Max(1, ClientSize.Width), 118);
         _modernRibbon.BringToFront();
         menuStrip.BringToFront();
         statusStrip.BringToFront();
@@ -252,44 +371,84 @@ public partial class MainForm
 
     private int GetModernWorkspaceTop() => _modernRibbon is { IsDisposed: false } ? _modernRibbon.Bottom : menuStrip.Bottom;
 
+    private void LoadEmptyStateArtwork()
+    {
+        try
+        {
+            string path = Path.Combine(AppContext.BaseDirectory, "assets", "app_icon_256.png");
+            if (File.Exists(path))
+            {
+                using var temp = Image.FromFile(path);
+                _emptyStateArtwork = new Bitmap(temp);
+            }
+        }
+        catch
+        {
+            _emptyStateArtwork = null;
+        }
+
+        FormClosed += (_, _) =>
+        {
+            _emptyStateArtwork?.Dispose();
+            _emptyStateArtwork = null;
+        };
+    }
+
     private void ModernCanvas_Paint(object? sender, PaintEventArgs e)
     {
         if (_originalBitmap != null) return;
         Rectangle bounds = pictureBox.ClientRectangle;
-        if (bounds.Width < 120 || bounds.Height < 120) return;
+        if (bounds.Width < 160 || bounds.Height < 160) return;
 
         using var gradient = new LinearGradientBrush(bounds, CanvasTop, CanvasBottom, 90f);
         e.Graphics.FillRectangle(gradient, bounds);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
 
-        int boxWidth = Math.Min(620, Math.Max(300, bounds.Width - 120));
-        int boxHeight = Math.Min(360, Math.Max(220, bounds.Height - 120));
+        int boxWidth = Math.Min(760, Math.Max(420, bounds.Width - 160));
+        int boxHeight = Math.Min(470, Math.Max(300, bounds.Height - 150));
         var dropRect = new Rectangle((bounds.Width - boxWidth) / 2, (bounds.Height - boxHeight) / 2, boxWidth, boxHeight);
-        using GraphicsPath path = CreateRoundedRect(dropRect, 24);
-        using var dashPen = new Pen(Color.FromArgb(150, 205, 214, 226), 2f) { DashStyle = DashStyle.Dash, DashPattern = new[] { 6f, 5f } };
+        using GraphicsPath path = CreateRoundedRect(dropRect, 20);
+        using var dashPen = new Pen(Color.FromArgb(175, 206, 215, 227), 2f)
+        {
+            DashStyle = DashStyle.Dash,
+            DashPattern = new[] { 6f, 5f }
+        };
         e.Graphics.DrawPath(dashPen, path);
 
         int cx = dropRect.Left + dropRect.Width / 2;
-        int iconY = dropRect.Top + Math.Max(42, dropRect.Height / 4);
-        DrawDropImageIcon(e.Graphics, new Rectangle(cx - 34, iconY - 25, 68, 54));
+        int artworkSize = Math.Min(128, Math.Max(88, dropRect.Height / 3));
+        int artworkTop = dropRect.Top + 54;
+        if (_emptyStateArtwork != null)
+        {
+            var artRect = new Rectangle(cx - artworkSize / 2, artworkTop, artworkSize, artworkSize);
+            e.Graphics.DrawImage(_emptyStateArtwork, artRect);
+        }
+        else
+        {
+            DrawDropImageIcon(e.Graphics, new Rectangle(cx - 38, artworkTop + 20, 76, 60));
+        }
 
-        using var titleFont = new Font("Segoe UI Semibold", 16f, FontStyle.Bold);
-        using var subFont = new Font("Segoe UI", 10.5f);
+        using var titleFont = new Font("Segoe UI Semibold", 17f, FontStyle.Bold);
+        using var subFont = new Font("Segoe UI", 10.8f);
         using var titleBrush = new SolidBrush(Color.White);
-        using var subBrush = new SolidBrush(Color.FromArgb(205, 221, 230, 241));
-        string title = "이미지 또는 폴더를 드래그해 놓으세요";
-        string sub = "JPG · PNG · WEBP  /  폴더 드롭 시 전체 자동처리";
+        using var subBrush = new SolidBrush(Color.FromArgb(214, 226, 236, 246));
+        string title = "이미지 또는 폴더를 드래그 해주세요";
+        string sub1 = "지원 형식: JPG, PNG, WEBP, BMP";
+        string sub2 = "(폴더 드래그시 전체 자동처리됩니다)";
         SizeF titleSize = e.Graphics.MeasureString(title, titleFont);
-        SizeF subSize = e.Graphics.MeasureString(sub, subFont);
-        float titleY = iconY + 56;
+        SizeF sub1Size = e.Graphics.MeasureString(sub1, subFont);
+        SizeF sub2Size = e.Graphics.MeasureString(sub2, subFont);
+        float titleY = artworkTop + artworkSize + 30;
         e.Graphics.DrawString(title, titleFont, titleBrush, cx - titleSize.Width / 2f, titleY);
-        e.Graphics.DrawString(sub, subFont, subBrush, cx - subSize.Width / 2f, titleY + 40);
+        e.Graphics.DrawString(sub1, subFont, subBrush, cx - sub1Size.Width / 2f, titleY + 48);
+        e.Graphics.DrawString(sub2, subFont, subBrush, cx - sub2Size.Width / 2f, titleY + 76);
     }
 
     private static void DrawDropImageIcon(Graphics g, Rectangle rect)
     {
-        using var pen = new Pen(Color.FromArgb(170, 219, 228, 238), 3f);
-        using var fill = new SolidBrush(Color.FromArgb(32, 255, 255, 255));
+        using var pen = new Pen(Color.FromArgb(180, 220, 228, 238), 3f);
+        using var fill = new SolidBrush(Color.FromArgb(26, 255, 255, 255));
         using GraphicsPath path = CreateRoundedRect(rect, 8);
         g.FillPath(fill, path);
         g.DrawPath(pen, path);
@@ -297,20 +456,11 @@ public partial class MainForm
         g.DrawLines(pen, new[]
         {
             new Point(rect.Left + 11, rect.Bottom - 12),
-            new Point(rect.Left + 27, rect.Top + 27),
-            new Point(rect.Left + 38, rect.Bottom - 20),
-            new Point(rect.Left + 49, rect.Top + 23),
+            new Point(rect.Left + 27, rect.Top + 29),
+            new Point(rect.Left + 40, rect.Bottom - 21),
+            new Point(rect.Left + 53, rect.Top + 24),
             new Point(rect.Right - 10, rect.Bottom - 12)
         });
-    }
-
-    private static void ApplyRoundedRegion(Control control, int radius)
-    {
-        if (control.Width <= 0 || control.Height <= 0) return;
-        using GraphicsPath path = CreateRoundedRect(new Rectangle(0, 0, control.Width, control.Height), radius);
-        Region? old = control.Region;
-        control.Region = new Region(path);
-        old?.Dispose();
     }
 
     private static GraphicsPath CreateRoundedRect(Rectangle rect, int radius)
@@ -328,8 +478,23 @@ public partial class MainForm
 
     private void UpdateModernToolSelection()
     {
-        if (_selectionRibbonButton != null) _selectionRibbonButton.Selected = _editToolMode == EditToolMode.MosaicSelection;
-        if (_eraserRibbonButton != null) _eraserRibbonButton.Selected = _editToolMode == EditToolMode.MaskEraser;
+        if (_selectionRibbonButton != null)
+            _selectionRibbonButton.Selected = _editToolMode == EditToolMode.MosaicSelection;
+        if (_eraserRibbonButton != null)
+            _eraserRibbonButton.Selected = _editToolMode == EditToolMode.MaskEraser;
+        RefreshModernStatusDetails();
+    }
+
+    private void RefreshModernStatusDetails()
+    {
+        if (_modeStatusLabel != null)
+            _modeStatusLabel.Text = _editToolMode == EditToolMode.MaskEraser ? "모드: 지우개" : "모드: 선택";
+        if (_eraserStatusLabel != null)
+            _eraserStatusLabel.Text = $"지우개 크기: {_eraserRadius * 2}px";
+        if (_imageSizeStatusLabel != null)
+            _imageSizeStatusLabel.Text = _originalBitmap == null ? "---- × ----" : $"{_originalBitmap.Width} × {_originalBitmap.Height}";
+        if (_eraserSizePicker != null)
+            _eraserSizePicker.SelectedDiameter = _eraserRadius * 2;
     }
 
     private void UpdateGpuStatus(string? provider)
@@ -338,12 +503,12 @@ public partial class MainForm
         if (string.IsNullOrWhiteSpace(provider))
         {
             _gpuStatusLabel.Text = "GPU: 자동 감지";
-            _gpuStatusLabel.ForeColor = Color.FromArgb(94, 109, 132);
+            _gpuStatusLabel.ForeColor = UiMuted;
             return;
         }
         bool cuda = provider.Contains("CUDA", StringComparison.OrdinalIgnoreCase) || provider.Contains("GPU", StringComparison.OrdinalIgnoreCase);
-        _gpuStatusLabel.Text = cuda ? "GPU: CUDA 사용 중" : "GPU: CPU fallback";
-        _gpuStatusLabel.ForeColor = cuda ? Color.FromArgb(22, 163, 74) : Color.FromArgb(217, 119, 6);
+        _gpuStatusLabel.Text = cuda ? "GPU: 사용 가능 (CUDA)" : "GPU: CPU fallback";
+        _gpuStatusLabel.ForeColor = cuda ? Color.FromArgb(24, 153, 70) : Color.FromArgb(211, 121, 15);
     }
 
     private void ShowModernHelp()
@@ -363,9 +528,9 @@ public partial class MainForm
         public override Color MenuStripGradientEnd => UiSurface;
         public override Color ToolStripGradientBegin => UiSurface;
         public override Color ToolStripGradientEnd => UiSurface;
-        public override Color ToolStripBorder => Color.FromArgb(228, 233, 240);
+        public override Color ToolStripBorder => UiBorder;
         public override Color MenuItemSelected => UiBlueSoft;
-        public override Color MenuItemBorder => Color.FromArgb(178, 211, 250);
+        public override Color MenuItemBorder => Color.FromArgb(177, 210, 249);
         public override Color MenuItemPressedGradientBegin => UiBlueSoft;
         public override Color MenuItemPressedGradientEnd => UiBlueSoft;
         public override Color ImageMarginGradientBegin => UiSurface;
@@ -374,7 +539,20 @@ public partial class MainForm
     }
 }
 
-internal enum ModernIcon { Open, Folder, Save, Undo, Redo, Magic, Pointer, Eraser, Settings, Help }
+internal enum ModernIcon
+{
+    Open,
+    Folder,
+    Save,
+    SaveAs,
+    Undo,
+    Redo,
+    Magic,
+    Pointer,
+    Eraser,
+    Settings,
+    Help
+}
 
 internal sealed class ModernRibbonButton : Control
 {
@@ -382,15 +560,15 @@ internal sealed class ModernRibbonButton : Control
     private bool _pressed;
     private bool _selected;
     public ModernIcon IconKind { get; set; }
-    public Color AccentColor { get; set; } = Color.FromArgb(28, 123, 235);
+    public Color AccentColor { get; set; } = Color.FromArgb(25, 122, 234);
     public bool Selected { get => _selected; set { _selected = value; Invalidate(); } }
 
     public ModernRibbonButton()
     {
         DoubleBuffered = true;
         Cursor = Cursors.Hand;
-        Font = new Font("Segoe UI", 9f);
-        ForeColor = Color.FromArgb(25, 39, 66);
+        Font = new Font("Segoe UI", 9.2f);
+        ForeColor = Color.FromArgb(18, 38, 72);
         BackColor = Color.White;
         SetStyle(ControlStyles.Selectable, true);
     }
@@ -404,84 +582,118 @@ internal sealed class ModernRibbonButton : Control
     {
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
         var card = new Rectangle(2, 2, Width - 5, Height - 5);
-        Color bg = Selected ? Color.FromArgb(226, 240, 255) : _pressed ? Color.FromArgb(234, 239, 247) : _hovered ? Color.FromArgb(244, 248, 253) : Color.White;
-        using GraphicsPath cardPath = RoundRect(card, 10);
+        Color bg = Selected ? Color.FromArgb(230, 242, 255)
+            : _pressed ? Color.FromArgb(232, 239, 248)
+            : _hovered ? Color.FromArgb(246, 249, 253)
+            : Color.White;
+        using GraphicsPath cardPath = RoundRect(card, 9);
         using var cardBrush = new SolidBrush(bg);
         e.Graphics.FillPath(cardBrush, cardPath);
         if (Selected)
         {
-            using var border = new Pen(Color.FromArgb(75, 154, 244), 1.4f);
+            using var border = new Pen(Color.FromArgb(39, 134, 241), 1.5f);
             e.Graphics.DrawPath(border, cardPath);
         }
 
-        var iconRect = new Rectangle((Width - 34) / 2, 11, 34, 34);
+        var iconRect = new Rectangle((Width - 42) / 2, 10, 42, 42);
         DrawIcon(e.Graphics, iconRect, AccentColor, IconKind);
-        TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(4, 51, Width - 8, 24), ForeColor,
+        TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(3, 59, Width - 6, 28), ForeColor,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis);
     }
 
     private static void DrawIcon(Graphics g, Rectangle r, Color c, ModernIcon kind)
     {
-        using var pen = new Pen(c, 2.6f) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-        using var fill = new SolidBrush(Color.FromArgb(38, c));
+        using var pen = new Pen(c, 2.8f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        using var fill = new SolidBrush(Color.FromArgb(42, c));
         switch (kind)
         {
             case ModernIcon.Open:
             case ModernIcon.Folder:
-                g.FillRectangle(fill, r.X + 4, r.Y + 12, r.Width - 8, r.Height - 15);
-                g.DrawRectangle(pen, r.X + 4, r.Y + 12, r.Width - 8, r.Height - 16);
-                g.DrawLines(pen, new[] { new Point(r.X + 5, r.Y + 12), new Point(r.X + 13, r.Y + 12), new Point(r.X + 17, r.Y + 7), new Point(r.Right - 7, r.Y + 7) });
+                g.FillRectangle(fill, r.X + 4, r.Y + 15, r.Width - 8, r.Height - 17);
+                g.DrawRectangle(pen, r.X + 4, r.Y + 15, r.Width - 8, r.Height - 18);
+                g.DrawLines(pen, new[] { new Point(r.X + 5, r.Y + 15), new Point(r.X + 14, r.Y + 15), new Point(r.X + 18, r.Y + 9), new Point(r.Right - 6, r.Y + 9) });
                 if (kind == ModernIcon.Folder)
                 {
-                    g.DrawEllipse(pen, r.Right - 13, r.Bottom - 13, 11, 11);
-                    g.DrawLine(pen, r.Right - 8, r.Bottom - 11, r.Right - 8, r.Bottom - 4);
-                    g.DrawLine(pen, r.Right - 11, r.Bottom - 8, r.Right - 4, r.Bottom - 8);
+                    using var green = new Pen(Color.FromArgb(25, 167, 85), 2.5f);
+                    g.DrawEllipse(green, r.Right - 14, r.Bottom - 14, 12, 12);
+                    g.DrawLine(green, r.Right - 8, r.Bottom - 12, r.Right - 8, r.Bottom - 4);
+                    g.DrawLine(green, r.Right - 12, r.Bottom - 8, r.Right - 4, r.Bottom - 8);
                 }
                 break;
             case ModernIcon.Save:
-                g.DrawRectangle(pen, r.X + 5, r.Y + 3, r.Width - 10, r.Height - 6);
-                g.DrawRectangle(pen, r.X + 10, r.Y + 5, r.Width - 20, 9);
-                g.DrawRectangle(pen, r.X + 10, r.Bottom - 13, r.Width - 20, 9);
+            case ModernIcon.SaveAs:
+                g.FillRectangle(fill, r.X + 7, r.Y + 4, r.Width - 14, r.Height - 8);
+                g.DrawRectangle(pen, r.X + 7, r.Y + 4, r.Width - 14, r.Height - 8);
+                g.DrawRectangle(pen, r.X + 12, r.Y + 7, r.Width - 24, 11);
+                g.DrawRectangle(pen, r.X + 12, r.Bottom - 16, r.Width - 24, 11);
+                if (kind == ModernIcon.SaveAs)
+                {
+                    g.DrawEllipse(pen, r.Right - 15, r.Bottom - 15, 13, 13);
+                    g.DrawLine(pen, r.Right - 8, r.Bottom - 12, r.Right - 8, r.Bottom - 4);
+                    g.DrawLine(pen, r.Right - 12, r.Bottom - 8, r.Right - 4, r.Bottom - 8);
+                }
                 break;
             case ModernIcon.Undo:
             case ModernIcon.Redo:
                 bool redo = kind == ModernIcon.Redo;
-                g.DrawArc(pen, r.X + 7, r.Y + 8, r.Width - 14, r.Height - 13, redo ? 205 : -25, 210);
+                g.DrawArc(pen, r.X + 6, r.Y + 8, r.Width - 12, r.Height - 15, redo ? 205 : -25, 210);
                 float ax = redo ? r.Right - 7 : r.X + 7;
                 float dir = redo ? -1 : 1;
-                g.DrawLine(pen, ax, r.Y + 10, ax + 6 * dir, r.Y + 4);
-                g.DrawLine(pen, ax, r.Y + 10, ax + 7 * dir, r.Y + 16);
+                g.DrawLine(pen, ax, r.Y + 11, ax + 7 * dir, r.Y + 4);
+                g.DrawLine(pen, ax, r.Y + 11, ax + 8 * dir, r.Y + 18);
                 break;
             case ModernIcon.Magic:
-                g.DrawLine(pen, r.X + 8, r.Bottom - 5, r.Right - 8, r.Y + 8);
-                g.DrawLine(pen, r.Right - 10, r.Y + 3, r.Right - 10, r.Y + 11);
-                g.DrawLine(pen, r.Right - 14, r.Y + 7, r.Right - 6, r.Y + 7);
-                g.DrawLine(pen, r.X + 8, r.Y + 8, r.X + 8, r.Y + 16);
-                g.DrawLine(pen, r.X + 4, r.Y + 12, r.X + 12, r.Y + 12);
+                g.DrawLine(pen, r.X + 9, r.Bottom - 5, r.Right - 9, r.Y + 9);
+                DrawSpark(g, pen, r.Right - 10, r.Y + 7, 5);
+                DrawSpark(g, pen, r.X + 9, r.Y + 14, 4);
                 break;
             case ModernIcon.Pointer:
-                g.DrawPolygon(pen, new[] { new Point(r.X + 7, r.Y + 4), new Point(r.X + 10, r.Bottom - 6), new Point(r.X + 17, r.Bottom - 13), new Point(r.X + 23, r.Bottom - 3), new Point(r.X + 28, r.Bottom - 6), new Point(r.X + 21, r.Bottom - 16) });
+                using (var body = new SolidBrush(Color.FromArgb(244, 248, 255)))
+                {
+                    PointF[] pts =
+                    [
+                        new(r.X + 8, r.Y + 5), new(r.X + 12, r.Bottom - 7), new(r.X + 20, r.Bottom - 15),
+                        new(r.X + 27, r.Bottom - 3), new(r.X + 33, r.Bottom - 7), new(r.X + 25, r.Bottom - 19)
+                    ];
+                    g.FillPolygon(body, pts);
+                    g.DrawPolygon(pen, pts);
+                }
                 break;
             case ModernIcon.Eraser:
-                g.FillRectangle(fill, r.X + 8, r.Y + 11, 20, 14);
-                g.DrawPolygon(pen, new[] { new Point(r.X + 8, r.Y + 20), new Point(r.X + 20, r.Y + 8), new Point(r.X + 29, r.Y + 17), new Point(r.X + 17, r.Y + 29), new Point(r.X + 9, r.Y + 29) });
+                using (var eraserFill = new SolidBrush(Color.FromArgb(64, 139, 205)))
+                {
+                    Point[] pts =
+                    [
+                        new(r.X + 8, r.Y + 26), new(r.X + 24, r.Y + 9), new(r.X + 35, r.Y + 20),
+                        new(r.X + 20, r.Y + 35), new(r.X + 9, r.Y + 35)
+                    ];
+                    g.FillPolygon(eraserFill, pts);
+                    g.DrawPolygon(pen, pts);
+                }
                 break;
             case ModernIcon.Settings:
-                g.DrawEllipse(pen, r.X + 7, r.Y + 7, 20, 20);
-                g.DrawEllipse(pen, r.X + 14, r.Y + 14, 6, 6);
+                g.DrawEllipse(pen, r.X + 9, r.Y + 9, 24, 24);
+                g.DrawEllipse(pen, r.X + 17, r.Y + 17, 8, 8);
                 for (int i = 0; i < 8; i++)
                 {
                     double a = i * Math.PI / 4;
-                    g.DrawLine(pen, r.X + 17 + (float)Math.Cos(a) * 11, r.Y + 17 + (float)Math.Sin(a) * 11,
-                        r.X + 17 + (float)Math.Cos(a) * 15, r.Y + 17 + (float)Math.Sin(a) * 15);
+                    g.DrawLine(pen,
+                        r.X + 21 + (float)Math.Cos(a) * 13, r.Y + 21 + (float)Math.Sin(a) * 13,
+                        r.X + 21 + (float)Math.Cos(a) * 18, r.Y + 21 + (float)Math.Sin(a) * 18);
                 }
                 break;
             case ModernIcon.Help:
-                g.DrawEllipse(pen, r.X + 4, r.Y + 4, r.Width - 8, r.Height - 8);
-                using (var font = new Font("Segoe UI Semibold", 16f, FontStyle.Bold))
-                    TextRenderer.DrawText(g, "?", font, r, c, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+                g.DrawEllipse(pen, r.X + 5, r.Y + 5, r.Width - 10, r.Height - 10);
+                using (var font = new Font("Segoe UI Semibold", 19f, FontStyle.Bold))
+                    TextRenderer.DrawText(g, "?", font, r, c, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
                 break;
         }
+    }
+
+    private static void DrawSpark(Graphics g, Pen pen, int x, int y, int radius)
+    {
+        g.DrawLine(pen, x - radius, y, x + radius, y);
+        g.DrawLine(pen, x, y - radius, x, y + radius);
     }
 
     private static GraphicsPath RoundRect(Rectangle rect, int radius)
@@ -494,5 +706,67 @@ internal sealed class ModernRibbonButton : Control
         p.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
         p.CloseFigure();
         return p;
+    }
+}
+
+internal sealed class EraserSizePicker : Control
+{
+    private readonly int[] _sizes = [32, 64, 128, 192];
+    private int _selectedDiameter = 64;
+    public event Action<int>? SizeSelected;
+
+    public int SelectedDiameter
+    {
+        get => _selectedDiameter;
+        set
+        {
+            if (_selectedDiameter == value) return;
+            _selectedDiameter = value;
+            Invalidate();
+        }
+    }
+
+    public EraserSizePicker()
+    {
+        DoubleBuffered = true;
+        Cursor = Cursors.Hand;
+        BackColor = Color.White;
+        ForeColor = Color.FromArgb(18, 38, 72);
+        Font = new Font("Segoe UI", 8.7f);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (e.Button != MouseButtons.Left) return;
+        int index = Math.Clamp((e.X - 4) / Math.Max(1, (Width - 8) / 4), 0, 3);
+        SelectedDiameter = _sizes[index];
+        SizeSelected?.Invoke(SelectedDiameter);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        int cell = (Width - 8) / 4;
+        for (int i = 0; i < _sizes.Length; i++)
+        {
+            int centerX = 4 + i * cell + cell / 2;
+            int diameter = 12 + i * 5;
+            int y = 26 - diameter / 2;
+            Color fillColor = _sizes[i] == SelectedDiameter ? Color.FromArgb(52, 76, 108) : Color.FromArgb(229, 235, 244);
+            Color outlineColor = _sizes[i] == SelectedDiameter ? Color.FromArgb(31, 65, 108) : Color.FromArgb(91, 119, 156);
+            using var brush = new SolidBrush(fillColor);
+            using var pen = new Pen(outlineColor, 1.6f);
+            e.Graphics.FillEllipse(brush, centerX - diameter / 2, y, diameter, diameter);
+            e.Graphics.DrawEllipse(pen, centerX - diameter / 2, y, diameter, diameter);
+            TextRenderer.DrawText(e.Graphics, _sizes[i].ToString(), Font,
+                new Rectangle(centerX - cell / 2, 49, cell, 20), ForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        }
+
+        using var captionFont = new Font("Segoe UI", 8.8f);
+        TextRenderer.DrawText(e.Graphics, "지우개 크기", captionFont,
+            new Rectangle(0, 71, Width, 18), ForeColor,
+            TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
     }
 }
