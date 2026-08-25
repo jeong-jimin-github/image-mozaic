@@ -15,6 +15,8 @@ public partial class MainForm
     private ListView? _folderList;
     private ImageList? _folderThumbnails;
     private Label? _folderHeader;
+    private Label? _folderCountBadge;
+    private Label? _folderPathHint;
     private string? _currentFolder;
     private bool _folderListUpdating;
     private bool _folderSelectionBusy;
@@ -32,7 +34,8 @@ public partial class MainForm
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             FixedPanel = FixedPanel.Panel2,
             IsSplitterFixed = false,
-            SplitterWidth = 8
+            SplitterWidth = 8,
+            BackColor = Color.FromArgb(245, 247, 250)
         };
 
         pictureBox.Dock = DockStyle.Fill;
@@ -44,48 +47,135 @@ public partial class MainForm
             ColorDepth = ColorDepth.Depth32Bit
         };
 
-        var header = new Label
+        var headerBar = new Panel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(0),
-            Padding = new Padding(14, 0, 8, 0),
-            Text = "이미지 목록  ·  0개",
-            TextAlign = ContentAlignment.MiddleLeft,
-            AutoEllipsis = true,
-            BackColor = Color.White,
-            ForeColor = Color.FromArgb(25, 39, 66),
-            Font = new Font("Segoe UI Semibold", 11f, FontStyle.Bold)
+            Margin = Padding.Empty,
+            Padding = new Padding(12, 6, 8, 6),
+            BackColor = Color.White
+        };
+        headerBar.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            using var folderPen = new Pen(Color.FromArgb(25, 122, 234), 2.2f)
+            {
+                LineJoin = LineJoin.Round
+            };
+            using var folderFill = new SolidBrush(Color.FromArgb(230, 242, 255));
+            var folderRect = new Rectangle(8, 14, 28, 20);
+            e.Graphics.FillRectangle(folderFill, folderRect);
+            e.Graphics.DrawRectangle(folderPen, folderRect);
+            e.Graphics.DrawLines(folderPen, new[]
+            {
+                new Point(9, 14), new Point(15, 14), new Point(19, 10), new Point(29, 10)
+            });
+            using var bottomPen = new Pen(Color.FromArgb(226, 232, 240));
+            e.Graphics.DrawLine(bottomPen, 0, headerBar.Height - 1, headerBar.Width, headerBar.Height - 1);
         };
 
-        var dropCard = new Panel
+        var header = new Label
         {
-            Dock = DockStyle.Fill,
-            Margin = new Padding(10, 5, 10, 8),
-            Padding = new Padding(10),
-            BackColor = Color.FromArgb(247, 250, 255),
-            BorderStyle = BorderStyle.FixedSingle,
-            AllowDrop = true
-        };
-        var dropLabel = new Label
-        {
-            Dock = DockStyle.Fill,
-            Text = "폴더를 드래그해 놓으세요.\n또는 이미지 파일을 드래그해 주세요.",
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.FromArgb(73, 92, 122),
+            AutoSize = false,
+            Location = new Point(44, 8),
+            Size = new Size(118, 38),
+            Text = "이미지 목록",
+            TextAlign = ContentAlignment.MiddleLeft,
             BackColor = Color.Transparent,
-            Font = new Font("Segoe UI Semibold", 9.2f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(18, 38, 72),
+            Font = new Font("Segoe UI Semibold", 11.5f, FontStyle.Bold)
+        };
+
+        var countBadge = new Label
+        {
+            AutoSize = false,
+            Location = new Point(163, 15),
+            Size = new Size(44, 24),
+            Text = "0개",
+            TextAlign = ContentAlignment.MiddleCenter,
+            BackColor = Color.FromArgb(105, 133, 174),
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 8.5f, FontStyle.Bold)
+        };
+        countBadge.Paint += (_, e) =>
+        {
+            using var path = RoundedRect(countBadge.ClientRectangle, 11);
+            countBadge.Region?.Dispose();
+            countBadge.Region = new Region(path);
+        };
+
+        var tileButton = CreateViewModeButton("▦", true);
+        var listButton = CreateViewModeButton("☷", false);
+        tileButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        listButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        tileButton.Location = new Point(headerBar.Width - 82, 10);
+        listButton.Location = new Point(headerBar.Width - 42, 10);
+        headerBar.SizeChanged += (_, _) =>
+        {
+            tileButton.Left = Math.Max(214, headerBar.Width - 82);
+            listButton.Left = Math.Max(254, headerBar.Width - 42);
+        };
+
+        headerBar.Controls.Add(header);
+        headerBar.Controls.Add(countBadge);
+        headerBar.Controls.Add(tileButton);
+        headerBar.Controls.Add(listButton);
+
+        var dropCard = new SidebarDropCard
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(10, 10, 10, 10),
+            Padding = new Padding(12),
+            BackColor = Color.White,
             AllowDrop = true
         };
-        dropCard.Controls.Add(dropLabel);
+
+        var dropIcon = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 48,
+            Text = "▱",
+            TextAlign = ContentAlignment.BottomCenter,
+            ForeColor = Color.FromArgb(25, 122, 234),
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI Symbol", 28f, FontStyle.Bold),
+            AllowDrop = true
+        };
+        var dropTitle = new Label
+        {
+            Dock = DockStyle.Top,
+            Height = 32,
+            Text = "폴더를 드래그해 놓으세요.",
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.FromArgb(18, 38, 72),
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI Semibold", 10.2f, FontStyle.Bold),
+            AllowDrop = true
+        };
+        var dropSub = new Label
+        {
+            Dock = DockStyle.Fill,
+            Text = "또는 파일을 드래그해 주세요.",
+            TextAlign = ContentAlignment.TopCenter,
+            ForeColor = Color.FromArgb(110, 123, 143),
+            BackColor = Color.Transparent,
+            Font = new Font("Segoe UI", 9f),
+            AllowDrop = true
+        };
+        dropCard.Controls.Add(dropSub);
+        dropCard.Controls.Add(dropTitle);
+        dropCard.Controls.Add(dropIcon);
         RegisterDropTarget(dropCard);
-        RegisterDropTarget(dropLabel);
+        RegisterDropTarget(dropIcon);
+        RegisterDropTarget(dropTitle);
+        RegisterDropTarget(dropSub);
 
         var list = new ListView
         {
             Dock = DockStyle.Fill,
             View = View.Tile,
-            TileSize = new Size(270, 88),
+            TileSize = new Size(286, 88),
             LargeImageList = thumbnails,
+            SmallImageList = thumbnails,
             MultiSelect = false,
             HideSelection = false,
             FullRowSelect = true,
@@ -93,27 +183,74 @@ public partial class MainForm
             AllowDrop = true,
             ShowItemToolTips = true,
             BackColor = Color.White,
-            ForeColor = Color.FromArgb(25, 39, 66),
-            Font = new Font("Segoe UI", 9.2f)
+            ForeColor = Color.FromArgb(18, 38, 72),
+            Font = new Font("Segoe UI", 9.3f)
         };
         list.SelectedIndexChanged += FolderList_SelectedIndexChanged;
+
+        var emptyHint = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 96,
+            Text = "▧\n이미지가 없습니다.",
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.FromArgb(181, 188, 199),
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 10.5f)
+        };
+        list.Controls.Add(emptyHint);
+        list.ClientSizeChanged += (_, _) => emptyHint.Visible = list.Items.Count == 0;
+
+        tileButton.Click += (_, _) =>
+        {
+            list.View = View.Tile;
+            SetViewButtonState(tileButton, listButton, true);
+        };
+        listButton.Click += (_, _) =>
+        {
+            list.View = View.List;
+            SetViewButtonState(tileButton, listButton, false);
+        };
+
+        var pathHint = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 24,
+            Padding = new Padding(10, 0, 10, 0),
+            Text = string.Empty,
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.FromArgb(120, 132, 151),
+            BackColor = Color.White,
+            Font = new Font("Segoe UI", 8f)
+        };
+
+        var listHost = new Panel
+        {
+            Dock = DockStyle.Fill,
+            BackColor = Color.White,
+            Padding = new Padding(8, 4, 8, 4)
+        };
+        listHost.Controls.Add(list);
+        listHost.Controls.Add(pathHint);
+        pathHint.BringToFront();
 
         var sidebarLayout = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
-            Margin = new Padding(0),
-            Padding = new Padding(0),
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
             BackColor = Color.White
         };
         sidebarLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 112));
+        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 56));
+        sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 160));
         sidebarLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        sidebarLayout.Controls.Add(header, 0, 0);
+        sidebarLayout.Controls.Add(headerBar, 0, 0);
         sidebarLayout.Controls.Add(dropCard, 0, 1);
-        sidebarLayout.Controls.Add(list, 0, 2);
+        sidebarLayout.Controls.Add(listHost, 0, 2);
         split.Panel2.Controls.Add(sidebarLayout);
 
         Controls.Add(split);
@@ -125,10 +262,41 @@ public partial class MainForm
         _folderList = list;
         _folderThumbnails = thumbnails;
         _folderHeader = header;
+        _folderCountBadge = countBadge;
+        _folderPathHint = pathHint;
 
         Shown += (_, _) => LayoutFolderWorkspace();
         SizeChanged += (_, _) => LayoutFolderWorkspace();
         Layout += (_, _) => LayoutFolderWorkspace();
+    }
+
+    private static Button CreateViewModeButton(string text, bool selected)
+    {
+        var button = new Button
+        {
+            Size = new Size(34, 34),
+            Text = text,
+            FlatStyle = FlatStyle.Flat,
+            BackColor = selected ? Color.FromArgb(231, 243, 255) : Color.White,
+            ForeColor = selected ? Color.FromArgb(25, 122, 234) : Color.FromArgb(117, 128, 145),
+            Font = new Font("Segoe UI Symbol", 13f, FontStyle.Bold),
+            TabStop = false,
+            Cursor = Cursors.Hand
+        };
+        button.FlatAppearance.BorderSize = selected ? 1 : 0;
+        button.FlatAppearance.BorderColor = Color.FromArgb(64, 150, 247);
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(240, 247, 255);
+        return button;
+    }
+
+    private static void SetViewButtonState(Button tileButton, Button listButton, bool tile)
+    {
+        tileButton.BackColor = tile ? Color.FromArgb(231, 243, 255) : Color.White;
+        tileButton.ForeColor = tile ? Color.FromArgb(25, 122, 234) : Color.FromArgb(117, 128, 145);
+        tileButton.FlatAppearance.BorderSize = tile ? 1 : 0;
+        listButton.BackColor = tile ? Color.White : Color.FromArgb(231, 243, 255);
+        listButton.ForeColor = tile ? Color.FromArgb(117, 128, 145) : Color.FromArgb(25, 122, 234);
+        listButton.FlatAppearance.BorderSize = tile ? 0 : 1;
     }
 
     private void LayoutFolderWorkspace()
@@ -157,7 +325,7 @@ public partial class MainForm
     {
         if (_mainSplit == null || _mainSplit.IsDisposed || _mainSplit.Width <= 0) return;
 
-        int sidebarWidth = Math.Clamp((int)(_mainSplit.Width * 0.27), 270, 350);
+        int sidebarWidth = Math.Clamp((int)(_mainSplit.Width * 0.29), 300, 390);
         int distance = _mainSplit.Width - sidebarWidth - _mainSplit.SplitterWidth;
         int maxDistance = Math.Max(80, _mainSplit.Width - _mainSplit.SplitterWidth - 80);
         distance = Math.Clamp(distance, 80, maxDistance);
@@ -226,7 +394,11 @@ public partial class MainForm
         }
 
         string folderName = new DirectoryInfo(folder).Name;
-        _folderHeader.Text = $"이미지 목록  ·  {_folderList.Items.Count}개   |   {folderName}";
+        _folderHeader.Text = "이미지 목록";
+        if (_folderCountBadge != null)
+            _folderCountBadge.Text = $"{_folderList.Items.Count}개";
+        if (_folderPathHint != null)
+            _folderPathHint.Text = folderName;
 
         string? target = preferredImage;
         if (target == null || !files.Contains(target, StringComparer.OrdinalIgnoreCase))
@@ -321,5 +493,52 @@ public partial class MainForm
 
         g.DrawImage(source, new Rectangle(x, y, width, height));
         return thumb;
+    }
+
+    private static GraphicsPath RoundedRect(Rectangle rect, int radius)
+    {
+        var path = new GraphicsPath();
+        int d = Math.Max(2, radius * 2);
+        path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+        path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+        path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+        path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+}
+
+internal sealed class SidebarDropCard : Panel
+{
+    public SidebarDropCard()
+    {
+        DoubleBuffered = true;
+        ResizeRedraw = true;
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        Rectangle rect = new Rectangle(1, 1, Math.Max(1, Width - 3), Math.Max(1, Height - 3));
+        using GraphicsPath path = CreatePath(rect, 10);
+        using var pen = new Pen(Color.FromArgb(188, 203, 222), 1.4f)
+        {
+            DashStyle = DashStyle.Dash,
+            DashPattern = new[] { 5f, 4f }
+        };
+        e.Graphics.DrawPath(pen, path);
+    }
+
+    private static GraphicsPath CreatePath(Rectangle rect, int radius)
+    {
+        var path = new GraphicsPath();
+        int d = radius * 2;
+        path.AddArc(rect.X, rect.Y, d, d, 180, 90);
+        path.AddArc(rect.Right - d, rect.Y, d, d, 270, 90);
+        path.AddArc(rect.Right - d, rect.Bottom - d, d, d, 0, 90);
+        path.AddArc(rect.X, rect.Bottom - d, d, d, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 }
