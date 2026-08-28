@@ -375,12 +375,8 @@ public partial class MainForm
     {
         try
         {
-            string path = Path.Combine(AppContext.BaseDirectory, "assets", "app_icon_256.png");
-            if (File.Exists(path))
-            {
-                using var temp = Image.FromFile(path);
-                _emptyStateArtwork = new Bitmap(temp);
-            }
+            Bitmap? source = SvgIconRenderer.GetBitmap("empty", 128, Color.FromArgb(230, 238, 247));
+            _emptyStateArtwork = source == null ? null : new Bitmap(source);
         }
         catch
         {
@@ -424,10 +420,6 @@ public partial class MainForm
             var artRect = new Rectangle(cx - artworkSize / 2, artworkTop, artworkSize, artworkSize);
             e.Graphics.DrawImage(_emptyStateArtwork, artRect);
         }
-        else
-        {
-            DrawDropImageIcon(e.Graphics, new Rectangle(cx - 38, artworkTop + 20, 76, 60));
-        }
 
         using var titleFont = new Font("Segoe UI Semibold", 17f, FontStyle.Bold);
         using var subFont = new Font("Segoe UI", 10.8f);
@@ -443,24 +435,6 @@ public partial class MainForm
         e.Graphics.DrawString(title, titleFont, titleBrush, cx - titleSize.Width / 2f, titleY);
         e.Graphics.DrawString(sub1, subFont, subBrush, cx - sub1Size.Width / 2f, titleY + 48);
         e.Graphics.DrawString(sub2, subFont, subBrush, cx - sub2Size.Width / 2f, titleY + 76);
-    }
-
-    private static void DrawDropImageIcon(Graphics g, Rectangle rect)
-    {
-        using var pen = new Pen(Color.FromArgb(180, 220, 228, 238), 3f);
-        using var fill = new SolidBrush(Color.FromArgb(26, 255, 255, 255));
-        using GraphicsPath path = CreateRoundedRect(rect, 8);
-        g.FillPath(fill, path);
-        g.DrawPath(pen, path);
-        g.DrawEllipse(pen, rect.Left + 12, rect.Top + 10, 9, 9);
-        g.DrawLines(pen, new[]
-        {
-            new Point(rect.Left + 11, rect.Bottom - 12),
-            new Point(rect.Left + 27, rect.Top + 29),
-            new Point(rect.Left + 40, rect.Bottom - 21),
-            new Point(rect.Left + 53, rect.Top + 24),
-            new Point(rect.Right - 10, rect.Bottom - 12)
-        });
     }
 
     private static GraphicsPath CreateRoundedRect(Rectangle rect, int radius)
@@ -599,91 +573,7 @@ internal sealed class ModernRibbonButton : Control
 
     private static void DrawIcon(Graphics g, Rectangle r, Color c, ModernIcon kind)
     {
-        using var pen = new Pen(c, 2.8f) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-        using var fill = new SolidBrush(Color.FromArgb(42, c));
-        switch (kind)
-        {
-            case ModernIcon.Open:
-            case ModernIcon.Folder:
-                g.FillRectangle(fill, r.X + 4, r.Y + 15, r.Width - 8, r.Height - 17);
-                g.DrawRectangle(pen, r.X + 4, r.Y + 15, r.Width - 8, r.Height - 18);
-                g.DrawLines(pen, new[] { new Point(r.X + 5, r.Y + 15), new Point(r.X + 14, r.Y + 15), new Point(r.X + 18, r.Y + 9), new Point(r.Right - 6, r.Y + 9) });
-                if (kind == ModernIcon.Folder)
-                {
-                    using var green = new Pen(Color.FromArgb(25, 167, 85), 2.5f);
-                    g.DrawEllipse(green, r.Right - 14, r.Bottom - 14, 12, 12);
-                    g.DrawLine(green, r.Right - 8, r.Bottom - 12, r.Right - 8, r.Bottom - 4);
-                    g.DrawLine(green, r.Right - 12, r.Bottom - 8, r.Right - 4, r.Bottom - 8);
-                }
-                break;
-            case ModernIcon.Save:
-            case ModernIcon.SaveAs:
-                g.FillRectangle(fill, r.X + 7, r.Y + 4, r.Width - 14, r.Height - 8);
-                g.DrawRectangle(pen, r.X + 7, r.Y + 4, r.Width - 14, r.Height - 8);
-                g.DrawRectangle(pen, r.X + 12, r.Y + 7, r.Width - 24, 11);
-                g.DrawRectangle(pen, r.X + 12, r.Bottom - 16, r.Width - 24, 11);
-                if (kind == ModernIcon.SaveAs)
-                {
-                    g.DrawEllipse(pen, r.Right - 15, r.Bottom - 15, 13, 13);
-                    g.DrawLine(pen, r.Right - 8, r.Bottom - 12, r.Right - 8, r.Bottom - 4);
-                    g.DrawLine(pen, r.Right - 12, r.Bottom - 8, r.Right - 4, r.Bottom - 8);
-                }
-                break;
-            case ModernIcon.Undo:
-            case ModernIcon.Redo:
-                bool redo = kind == ModernIcon.Redo;
-                g.DrawArc(pen, r.X + 6, r.Y + 8, r.Width - 12, r.Height - 15, redo ? 205 : -25, 210);
-                float ax = redo ? r.Right - 7 : r.X + 7;
-                float dir = redo ? -1 : 1;
-                g.DrawLine(pen, ax, r.Y + 11, ax + 7 * dir, r.Y + 4);
-                g.DrawLine(pen, ax, r.Y + 11, ax + 8 * dir, r.Y + 18);
-                break;
-            case ModernIcon.Magic:
-                g.DrawLine(pen, r.X + 9, r.Bottom - 5, r.Right - 9, r.Y + 9);
-                DrawSpark(g, pen, r.Right - 10, r.Y + 7, 5);
-                DrawSpark(g, pen, r.X + 9, r.Y + 14, 4);
-                break;
-            case ModernIcon.Pointer:
-                using (var body = new SolidBrush(Color.FromArgb(244, 248, 255)))
-                {
-                    PointF[] pts =
-                    [
-                        new(r.X + 8, r.Y + 5), new(r.X + 12, r.Bottom - 7), new(r.X + 20, r.Bottom - 15),
-                        new(r.X + 27, r.Bottom - 3), new(r.X + 33, r.Bottom - 7), new(r.X + 25, r.Bottom - 19)
-                    ];
-                    g.FillPolygon(body, pts);
-                    g.DrawPolygon(pen, pts);
-                }
-                break;
-            case ModernIcon.Eraser:
-                using (var eraserFill = new SolidBrush(Color.FromArgb(64, 139, 205)))
-                {
-                    Point[] pts =
-                    [
-                        new(r.X + 8, r.Y + 26), new(r.X + 24, r.Y + 9), new(r.X + 35, r.Y + 20),
-                        new(r.X + 20, r.Y + 35), new(r.X + 9, r.Y + 35)
-                    ];
-                    g.FillPolygon(eraserFill, pts);
-                    g.DrawPolygon(pen, pts);
-                }
-                break;
-            case ModernIcon.Settings:
-                g.DrawEllipse(pen, r.X + 9, r.Y + 9, 24, 24);
-                g.DrawEllipse(pen, r.X + 17, r.Y + 17, 8, 8);
-                for (int i = 0; i < 8; i++)
-                {
-                    double a = i * Math.PI / 4;
-                    g.DrawLine(pen,
-                        r.X + 21 + (float)Math.Cos(a) * 13, r.Y + 21 + (float)Math.Sin(a) * 13,
-                        r.X + 21 + (float)Math.Cos(a) * 18, r.Y + 21 + (float)Math.Sin(a) * 18);
-                }
-                break;
-            case ModernIcon.Help:
-                g.DrawEllipse(pen, r.X + 5, r.Y + 5, r.Width - 10, r.Height - 10);
-                using (var font = new Font("Segoe UI Semibold", 19f, FontStyle.Bold))
-                    TextRenderer.DrawText(g, "?", font, r, c, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-                break;
-        }
+        SvgIconRenderer.Draw(g, SvgIconRenderer.NameFor(kind), r, c);
     }
 
     private static void DrawSpark(Graphics g, Pen pen, int x, int y, int radius)

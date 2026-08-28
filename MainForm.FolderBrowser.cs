@@ -58,15 +58,7 @@ public partial class MainForm
         headerBar.Paint += (_, e) =>
         {
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            using var folderPen = new Pen(Color.FromArgb(25, 122, 234), 2.2f) { LineJoin = LineJoin.Round };
-            using var folderFill = new SolidBrush(Color.FromArgb(230, 242, 255));
-            var folderRect = new Rectangle(8, 14, 28, 20);
-            e.Graphics.FillRectangle(folderFill, folderRect);
-            e.Graphics.DrawRectangle(folderPen, folderRect);
-            e.Graphics.DrawLines(folderPen, new[]
-            {
-                new Point(9, 14), new Point(15, 14), new Point(19, 10), new Point(29, 10)
-            });
+            SvgIconRenderer.Draw(e.Graphics, "folder", new Rectangle(9, 12, 26, 26), Color.FromArgb(25, 122, 234));
             using var bottomPen = new Pen(Color.FromArgb(226, 232, 240));
             e.Graphics.DrawLine(bottomPen, 0, headerBar.Height - 1, headerBar.Width, headerBar.Height - 1);
         };
@@ -127,13 +119,17 @@ public partial class MainForm
         var dropIcon = new Label
         {
             Dock = DockStyle.Top,
-            Height = 48,
-            Text = "▱",
-            TextAlign = ContentAlignment.BottomCenter,
-            ForeColor = Color.FromArgb(25, 122, 234),
+            Height = 52,
+            Text = string.Empty,
             BackColor = Color.Transparent,
-            Font = new Font("Segoe UI Symbol", 28f, FontStyle.Bold),
             AllowDrop = true
+        };
+        dropIcon.Paint += (_, e) =>
+        {
+            int size = 34;
+            SvgIconRenderer.Draw(e.Graphics, "empty",
+                new Rectangle((dropIcon.Width - size) / 2, 10, size, size),
+                Color.FromArgb(25, 122, 234));
         };
         var dropTitle = new Label
         {
