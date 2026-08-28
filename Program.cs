@@ -21,8 +21,8 @@ namespace ImageMosaicEditor
                 try
                 {
                     MessageBox.Show(
-                        $"프로그램 시작 중 오류가 발생했습니다.\n\n{ex.Message}\n\n오류 로그:\n{logPath}",
-                        "ImageMosaicEditor 시작 오류",
+                        L10n.F("프로그램 시작 중 오류가 발생했습니다.\n\n{0}\n\n오류 로그:\n{1}", ex.Message, logPath),
+                        L10n.T("ImageMosaicEditor 시작 오류"),
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
                 }
@@ -54,7 +54,7 @@ namespace ImageMosaicEditor
             }
             catch
             {
-                return "오류 로그를 저장하지 못했습니다.";
+                return L10n.T("오류 로그를 저장하지 못했습니다.");
             }
         }
     }

@@ -23,27 +23,29 @@ public partial class MainForm
 
     private void InitializeEraserTools()
     {
-        _selectionMenuItem = new ToolStripMenuItem("모자이크 선택 모드(&M)")
+        _selectionMenuItem = new ToolStripMenuItem(L10n.T("모자이크 선택 모드(&M)"))
         {
+            Name = "eraserSelectionMenu",
             ShortcutKeys = Keys.Control | Keys.M,
             Checked = true
         };
         _selectionMenuItem.Click += (_, _) => SetEditToolMode(EditToolMode.MosaicSelection);
 
-        _eraserMenuItem = new ToolStripMenuItem("마스크 지우개 모드(&E)")
+        _eraserMenuItem = new ToolStripMenuItem(L10n.T("마스크 지우개 모드(&E)"))
         {
+            Name = "eraserModeMenu",
             ShortcutKeys = Keys.Control | Keys.E
         };
         _eraserMenuItem.Click += (_, _) => SetEditToolMode(EditToolMode.MaskEraser);
 
-        var eraserSizeMenu = new ToolStripMenuItem("지우개 크기");
+        var eraserSizeMenu = new ToolStripMenuItem(L10n.T("지우개 크기")) { Name = "eraserSizeMenu" };
         foreach (int radius in new[] { 16, 32, 64, 96 })
         {
             var item = new ToolStripMenuItem($"{radius * 2}px") { Tag = radius };
             item.Click += (_, _) =>
             {
                 _eraserRadius = radius;
-                statusLabel.Text = $"마스크 지우개 크기: {radius * 2}px";
+                statusLabel.Text = L10n.F("마스크 지우개 크기: {0}px", radius * 2);
                 pictureBox.Invalidate();
             };
             eraserSizeMenu.DropDownItems.Add(item);
@@ -75,8 +77,8 @@ public partial class MainForm
 
         pictureBox.Cursor = mode == EditToolMode.MaskEraser ? Cursors.Hand : Cursors.Cross;
         statusLabel.Text = mode == EditToolMode.MaskEraser
-            ? "마스크 지우개 모드 - 잘못 처리된 부분을 드래그하면 원본으로 복원됩니다."
-            : "모자이크 선택 모드 - 드래그로 수동 모자이크 영역을 선택하세요.";
+            ? L10n.T("마스크 지우개 모드 - 잘못 처리된 부분을 드래그하면 원본으로 복원됩니다.")
+            : L10n.T("모자이크 선택 모드 - 드래그로 수동 모자이크 영역을 선택하세요.");
         UpdateModernToolSelection();
         pictureBox.Invalidate();
     }
@@ -92,13 +94,13 @@ public partial class MainForm
 
         if (_originalBitmap == null || _sourceBitmap == null)
         {
-            statusLabel.Text = "지울 수 있는 원본 이미지가 없습니다.";
+            statusLabel.Text = L10n.T("지울 수 있는 원본 이미지가 없습니다.");
             return;
         }
 
         if (_originalBitmap.Size != _sourceBitmap.Size)
         {
-            statusLabel.Text = "원본과 작업 이미지 크기가 달라 지우개를 사용할 수 없습니다.";
+            statusLabel.Text = L10n.T("원본과 작업 이미지 크기가 달라 지우개를 사용할 수 없습니다.");
             return;
         }
 
@@ -174,7 +176,7 @@ public partial class MainForm
         RestoreCircularRegionFromSource(center, _eraserRadius);
         pictureBox.Image = _originalBitmap;
         pictureBox.Invalidate();
-        statusLabel.Text = "마스크 지우개: 원본 픽셀 복원 중...";
+        statusLabel.Text = L10n.T("마스크 지우개: 원본 픽셀 복원 중...");
     }
 
     private unsafe void RestoreCircularRegionFromSource(Point center, int radius)

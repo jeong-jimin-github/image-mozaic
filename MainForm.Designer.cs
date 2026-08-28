@@ -40,18 +40,18 @@ namespace ImageMosaicEditor
             this.menuUndo = new System.Windows.Forms.ToolStripMenuItem();
             this.menuRedo = new System.Windows.Forms.ToolStripMenuItem();
 
-            this.menuOpen.Text = "열기(&O)";
+            this.menuOpen.Text = L10n.T("열기(&O)");
             this.menuOpen.ShortcutKeys = System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.O;
             this.menuOpen.Click += new System.EventHandler(this.MenuOpen_Click);
 
-            this.menuSave.Text = "저장(&S)";
+            this.menuSave.Text = L10n.T("저장(&S)");
             this.menuSave.ShortcutKeys = System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.S;
             this.menuSave.Click += new System.EventHandler(this.MenuSave_Click);
 
-            this.menuExit.Text = "종료(&X)";
+            this.menuExit.Text = L10n.T("종료(&X)");
             this.menuExit.Click += (s, e) => this.Close();
 
-            this.fileMenu.Text = "파일(&F)";
+            this.fileMenu.Text = L10n.T("파일(&F)");
             this.fileMenu.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[]
             {
                 this.menuOpen,
@@ -64,12 +64,12 @@ namespace ImageMosaicEditor
             this.menuStrip.Items.Add(this.editMenu);
 
             // ── Edit Menu ──────────────────────────────────────────────────────
-            this.editMenu.Text = "편집(&E)";
-            this.menuUndo.Text = "되돌리기(&U)";
+            this.editMenu.Text = L10n.T("편집(&E)");
+            this.menuUndo.Text = L10n.T("되돌리기(&U)");
             this.menuUndo.ShortcutKeys = System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Z;
             this.menuUndo.Click += new System.EventHandler(this.MenuUndo_Click);
 
-            this.menuRedo.Text = "다시 실행(&R)";
+            this.menuRedo.Text = L10n.T("다시 실행(&R)");
             this.menuRedo.ShortcutKeys = System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Y;
             this.menuRedo.Click += new System.EventHandler(this.MenuRedo_Click);
 
@@ -94,7 +94,7 @@ namespace ImageMosaicEditor
             // ── StatusStrip ────────────────────────────────────────────────────
             this.statusStrip = new System.Windows.Forms.StatusStrip();
             this.statusLabel = new System.Windows.Forms.ToolStripStatusLabel();
-            this.statusLabel.Text = "이미지를 열어 드래그로 모자이크 영역을 선택하세요.";
+            this.statusLabel.Text = L10n.T("이미지를 열어 드래그로 모자이크 영역을 선택하세요.");
             this.statusStrip.Items.Add(this.statusLabel);
 
             // ── Form ───────────────────────────────────────────────────────────
@@ -102,7 +102,7 @@ namespace ImageMosaicEditor
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(900, 650);
             this.MainMenuStrip = this.menuStrip;
-            this.Text = "이미지 모자이크 편집기";
+            this.Text = L10n.T("이미지 모자이크 편집기");
             this.MinimumSize = new System.Drawing.Size(400, 300);
 
             this.Controls.Add(this.pictureBox);

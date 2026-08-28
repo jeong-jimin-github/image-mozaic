@@ -81,21 +81,21 @@ public partial class MainForm
     {
         if (menuStrip.Items.ContainsKey("modernViewMenu")) return;
 
-        var viewMenu = new ToolStripMenuItem("보기(&V)") { Name = "modernViewMenu" };
-        var resetView = new ToolStripMenuItem("작업 화면 맞춤");
+        var viewMenu = new ToolStripMenuItem(L10n.T("보기(&V)")) { Name = "modernViewMenu" };
+        var resetView = new ToolStripMenuItem(L10n.T("작업 화면 맞춤")) { Name = "modernResetViewMenu" };
         resetView.Click += (_, _) => LayoutModernChrome();
         viewMenu.DropDownItems.Add(resetView);
 
-        var toolsMenu = new ToolStripMenuItem("도구(&T)") { Name = "modernToolsMenu" };
-        var select = new ToolStripMenuItem("선택 모드") { ShortcutKeys = Keys.Control | Keys.M };
+        var toolsMenu = new ToolStripMenuItem(L10n.T("도구(&T)")) { Name = "modernToolsMenu" };
+        var select = new ToolStripMenuItem(L10n.T("선택 모드")) { Name = "modernSelectMenu", ShortcutKeys = Keys.Control | Keys.M };
         select.Click += (_, _) => { SetEditToolMode(EditToolMode.MosaicSelection); UpdateModernToolSelection(); };
-        var erase = new ToolStripMenuItem("지우개 모드") { ShortcutKeys = Keys.Control | Keys.E };
+        var erase = new ToolStripMenuItem(L10n.T("지우개 모드")) { Name = "modernEraseMenu", ShortcutKeys = Keys.Control | Keys.E };
         erase.Click += (_, _) => { SetEditToolMode(EditToolMode.MaskEraser); UpdateModernToolSelection(); };
         toolsMenu.DropDownItems.AddRange(new ToolStripItem[] { select, erase });
 
-        var settingsMenu = new ToolStripMenuItem("설정(&S)") { Name = "modernSettingsMenu" };
+        var settingsMenu = new ToolStripMenuItem(L10n.T("설정(&S)")) { Name = "modernSettingsMenu" };
         settingsMenu.Click += MenuAutoSettings_Click;
-        var helpMenu = new ToolStripMenuItem("도움말(&H)") { Name = "modernHelpMenu" };
+        var helpMenu = new ToolStripMenuItem(L10n.T("도움말(&H)")) { Name = "modernHelpMenu" };
         helpMenu.Click += (_, _) => ShowModernHelp();
 
         menuStrip.Items.Add(viewMenu);
@@ -130,37 +130,37 @@ public partial class MainForm
             BackColor = UiSurface
         };
 
-        flow.Controls.Add(CreateRibbonButton("열기", ModernIcon.Open, async () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("열기"), ModernIcon.Open, async () =>
         {
             MenuOpenAndAuto_Click(this, EventArgs.Empty);
             await Task.CompletedTask;
         }, Color.FromArgb(242, 154, 42)));
-        flow.Controls.Add(CreateRibbonButton("폴더 열기", ModernIcon.Folder, async () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("폴더 열기"), ModernIcon.Folder, async () =>
         {
             MenuAutoBatch_Click(this, EventArgs.Empty);
             await Task.CompletedTask;
         }, Color.FromArgb(242, 154, 42)));
         flow.Controls.Add(CreateRibbonSeparator());
 
-        flow.Controls.Add(CreateRibbonButton("저장", ModernIcon.Save, () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("저장"), ModernIcon.Save, () =>
         {
             MenuSave_Click(this, EventArgs.Empty);
             return Task.CompletedTask;
         }));
-        flow.Controls.Add(CreateRibbonButton("다른 이름으로", ModernIcon.SaveAs, () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("다른 이름으로"), ModernIcon.SaveAs, () =>
         {
             SaveAsModern();
             return Task.CompletedTask;
         }));
         flow.Controls.Add(CreateRibbonSeparator());
 
-        flow.Controls.Add(CreateRibbonButton("실행 취소", ModernIcon.Undo, () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("실행 취소"), ModernIcon.Undo, () =>
         {
             MenuUndo_Click(this, EventArgs.Empty);
             RefreshModernStatusDetails();
             return Task.CompletedTask;
         }, Color.FromArgb(132, 143, 160)));
-        flow.Controls.Add(CreateRibbonButton("다시 실행", ModernIcon.Redo, () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("다시 실행"), ModernIcon.Redo, () =>
         {
             MenuRedo_Click(this, EventArgs.Empty);
             RefreshModernStatusDetails();
@@ -168,13 +168,13 @@ public partial class MainForm
         }, Color.FromArgb(132, 143, 160)));
         flow.Controls.Add(CreateRibbonSeparator());
 
-        flow.Controls.Add(CreateRibbonButton("자동 모자이크", ModernIcon.Magic, async () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("자동 모자이크"), ModernIcon.Magic, async () =>
         {
             MenuAutoCurrent_Click(this, EventArgs.Empty);
             await Task.CompletedTask;
         }));
 
-        _selectionRibbonButton = CreateRibbonButton("선택 모드", ModernIcon.Pointer, () =>
+        _selectionRibbonButton = CreateRibbonButton(L10n.T("선택 모드"), ModernIcon.Pointer, () =>
         {
             SetEditToolMode(EditToolMode.MosaicSelection);
             UpdateModernToolSelection();
@@ -182,7 +182,7 @@ public partial class MainForm
         });
         flow.Controls.Add(_selectionRibbonButton);
 
-        _eraserRibbonButton = CreateRibbonButton("지우개 모드", ModernIcon.Eraser, () =>
+        _eraserRibbonButton = CreateRibbonButton(L10n.T("지우개 모드"), ModernIcon.Eraser, () =>
         {
             SetEditToolMode(EditToolMode.MaskEraser);
             UpdateModernToolSelection();
@@ -201,19 +201,19 @@ public partial class MainForm
         _eraserSizePicker.SizeSelected += diameter =>
         {
             _eraserRadius = diameter / 2;
-            statusLabel.Text = $"마스크 지우개 크기: {diameter}px";
+            statusLabel.Text = L10n.F("마스크 지우개 크기: {0}px", diameter);
             RefreshModernStatusDetails();
             pictureBox.Invalidate();
         };
         flow.Controls.Add(_eraserSizePicker);
         flow.Controls.Add(CreateRibbonSeparator());
 
-        flow.Controls.Add(CreateRibbonButton("설정", ModernIcon.Settings, () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("설정"), ModernIcon.Settings, () =>
         {
             MenuAutoSettings_Click(this, EventArgs.Empty);
             return Task.CompletedTask;
         }));
-        flow.Controls.Add(CreateRibbonButton("도움말", ModernIcon.Help, () =>
+        flow.Controls.Add(CreateRibbonButton(L10n.T("도움말"), ModernIcon.Help, () =>
         {
             ShowModernHelp();
             return Task.CompletedTask;
@@ -232,7 +232,7 @@ public partial class MainForm
             Text = text,
             IconKind = icon,
             AccentColor = accent ?? UiBlue,
-            Width = text == "다른 이름으로" ? 96 : 86,
+            Width = icon == ModernIcon.SaveAs ? 122 : 104,
             Height = 96,
             Margin = new Padding(2, 0, 2, 0)
         };
@@ -252,7 +252,7 @@ public partial class MainForm
     {
         if (_originalBitmap == null)
         {
-            MessageBox.Show("저장할 이미지가 없습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(L10n.T("저장할 이미지가 없습니다."), L10n.T("알림"), MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
 
@@ -261,9 +261,9 @@ public partial class MainForm
             : Path.GetFileName(_currentFilePath);
         using var dialog = new SaveFileDialog
         {
-            Title = "다른 이름으로 저장",
+            Title = L10n.T("다른 이름으로 저장"),
             FileName = initialName,
-            Filter = "PNG 이미지 (*.png)|*.png|JPEG 이미지 (*.jpg;*.jpeg)|*.jpg;*.jpeg|모든 파일 (*.*)|*.*",
+            Filter = L10n.T("PNG 이미지 (*.png)|*.png|JPEG 이미지 (*.jpg;*.jpeg)|*.jpg;*.jpeg|모든 파일 (*.*)|*.*"),
             AddExtension = true,
             DefaultExt = "png"
         };
@@ -275,12 +275,12 @@ public partial class MainForm
             ImageFormat format = ext is ".jpg" or ".jpeg" ? ImageFormat.Jpeg : ImageFormat.Png;
             _originalBitmap.Save(dialog.FileName, format);
             _currentFilePath = dialog.FileName;
-            Text = $"이미지 모자이크 편집기 - {Path.GetFileName(dialog.FileName)}";
-            statusLabel.Text = $"저장 완료: {Path.GetFileName(dialog.FileName)}";
+            Text = L10n.F("이미지 모자이크 편집기 - {0}", Path.GetFileName(dialog.FileName));
+            statusLabel.Text = L10n.F("저장 완료: {0}", Path.GetFileName(dialog.FileName));
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"저장 중 오류가 발생했습니다:\n{ex.Message}", "저장 오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(L10n.F("저장 중 오류가 발생했습니다:\n{0}", ex.Message), L10n.T("저장 오류"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -303,7 +303,7 @@ public partial class MainForm
             _folderHeader.ForeColor = UiText;
             _folderHeader.Font = new Font("Segoe UI Semibold", 11.5f, FontStyle.Bold);
             _folderHeader.Padding = new Padding(12, 0, 8, 0);
-            _folderHeader.Text = "이미지 목록   0개";
+            _folderHeader.Text = L10n.T("이미지 목록   0개");
         }
         if (_folderList != null)
         {
@@ -330,10 +330,10 @@ public partial class MainForm
         statusLabel.ForeColor = UiText;
         statusLabel.Font = new Font("Segoe UI", 9f);
 
-        _modeStatusLabel = CreateStatusChip("모드: 선택");
-        _eraserStatusLabel = CreateStatusChip($"지우개 크기: {_eraserRadius * 2}px");
+        _modeStatusLabel = CreateStatusChip(L10n.T("모드: 선택"));
+        _eraserStatusLabel = CreateStatusChip(L10n.F("지우개 크기: {0}px", _eraserRadius * 2));
         _imageSizeStatusLabel = CreateStatusChip("---- × ----");
-        _gpuStatusLabel = new ToolStripStatusLabel("GPU: 자동 감지")
+        _gpuStatusLabel = new ToolStripStatusLabel(L10n.T("GPU: 자동 감지"))
         {
             AutoSize = true,
             ForeColor = Color.FromArgb(24, 153, 70),
@@ -433,9 +433,9 @@ public partial class MainForm
         using var subFont = new Font("Segoe UI", 10.8f);
         using var titleBrush = new SolidBrush(Color.White);
         using var subBrush = new SolidBrush(Color.FromArgb(214, 226, 236, 246));
-        string title = "이미지 또는 폴더를 드래그 해주세요";
-        string sub1 = "지원 형식: JPG, PNG, WEBP, BMP";
-        string sub2 = "(폴더 드래그시 전체 자동처리됩니다)";
+        string title = L10n.T("이미지 또는 폴더를 드래그 해주세요");
+        string sub1 = L10n.T("지원 형식: JPG, PNG, WEBP");
+        string sub2 = L10n.T("(폴더 드래그시 전체 자동처리됩니다)");
         SizeF titleSize = e.Graphics.MeasureString(title, titleFont);
         SizeF sub1Size = e.Graphics.MeasureString(sub1, subFont);
         SizeF sub2Size = e.Graphics.MeasureString(sub2, subFont);
@@ -488,9 +488,9 @@ public partial class MainForm
     private void RefreshModernStatusDetails()
     {
         if (_modeStatusLabel != null)
-            _modeStatusLabel.Text = _editToolMode == EditToolMode.MaskEraser ? "모드: 지우개" : "모드: 선택";
+            _modeStatusLabel.Text = _editToolMode == EditToolMode.MaskEraser ? L10n.T("모드: 지우개") : L10n.T("모드: 선택");
         if (_eraserStatusLabel != null)
-            _eraserStatusLabel.Text = $"지우개 크기: {_eraserRadius * 2}px";
+            _eraserStatusLabel.Text = L10n.F("지우개 크기: {0}px", _eraserRadius * 2);
         if (_imageSizeStatusLabel != null)
             _imageSizeStatusLabel.Text = _originalBitmap == null ? "---- × ----" : $"{_originalBitmap.Width} × {_originalBitmap.Height}";
         if (_eraserSizePicker != null)
@@ -502,24 +502,20 @@ public partial class MainForm
         if (_gpuStatusLabel == null) return;
         if (string.IsNullOrWhiteSpace(provider))
         {
-            _gpuStatusLabel.Text = "GPU: 자동 감지";
+            _gpuStatusLabel.Text = L10n.T("GPU: 자동 감지");
             _gpuStatusLabel.ForeColor = UiMuted;
             return;
         }
         bool cuda = provider.Contains("CUDA", StringComparison.OrdinalIgnoreCase) || provider.Contains("GPU", StringComparison.OrdinalIgnoreCase);
-        _gpuStatusLabel.Text = cuda ? "GPU: 사용 가능 (CUDA)" : "GPU: CPU fallback";
+        _gpuStatusLabel.Text = cuda ? L10n.T("GPU: 사용 가능 (CUDA)") : L10n.T("GPU: CPU fallback");
         _gpuStatusLabel.ForeColor = cuda ? Color.FromArgb(24, 153, 70) : Color.FromArgb(211, 121, 15);
     }
 
     private void ShowModernHelp()
     {
         MessageBox.Show(
-            "드래그 앤 드롭: 이미지/폴더 가져오기\n" +
-            "Ctrl+Shift+A: 현재 이미지를 원본에서 다시 자동 처리\n" +
-            "Ctrl+E: 마스크 지우개\n" +
-            "Ctrl+M: 수동 모자이크 선택\n" +
-            "Ctrl+Z / Ctrl+Y: 실행 취소 / 다시 실행",
-            "Image Mosaic Editor 도움말", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            L10n.T("드래그 앤 드롭: 이미지/폴더 가져오기\nCtrl+Shift+A: 현재 이미지를 원본에서 다시 자동 처리\nCtrl+E: 마스크 지우개\nCtrl+M: 수동 모자이크 선택\nCtrl+Z / Ctrl+Y: 실행 취소 / 다시 실행"),
+            L10n.T("Image Mosaic Editor 도움말"), MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private sealed class ModernColorTable : ProfessionalColorTable
@@ -765,7 +761,7 @@ internal sealed class EraserSizePicker : Control
         }
 
         using var captionFont = new Font("Segoe UI", 8.8f);
-        TextRenderer.DrawText(e.Graphics, "지우개 크기", captionFont,
+        TextRenderer.DrawText(e.Graphics, L10n.T("지우개 크기"), captionFont,
             new Rectangle(0, 71, Width, 18), ForeColor,
             TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
     }

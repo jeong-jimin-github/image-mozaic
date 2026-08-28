@@ -196,7 +196,7 @@ public partial class MainForm
 
         pictureBox.Image = _originalBitmap;
         pictureBox.SizeMode = PictureBoxSizeMode.Zoom;
-        Text = $"이미지 모자이크 편집기 - {Path.GetFileName(path)}";
+        Text = L10n.F("이미지 모자이크 편집기 - {0}", Path.GetFileName(path));
     }
 
     private void ReplaceWorkingBitmap(Bitmap next, bool saveUndo)

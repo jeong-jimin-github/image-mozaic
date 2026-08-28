@@ -76,7 +76,8 @@ public partial class MainForm
             AutoSize = false,
             Location = new Point(44, 8),
             Size = new Size(118, 38),
-            Text = "이미지 목록",
+            Name = "folderHeaderLabel",
+            Text = L10n.T("이미지 목록"),
             TextAlign = ContentAlignment.MiddleLeft,
             BackColor = Color.Transparent,
             ForeColor = Color.FromArgb(18, 38, 72),
@@ -88,7 +89,7 @@ public partial class MainForm
             AutoSize = false,
             Location = new Point(163, 15),
             Size = new Size(44, 24),
-            Text = "0개",
+            Text = L10n.F("{0}개", 0),
             TextAlign = ContentAlignment.MiddleCenter,
             BackColor = Color.FromArgb(105, 133, 174),
             ForeColor = Color.White,
@@ -138,7 +139,8 @@ public partial class MainForm
         {
             Dock = DockStyle.Top,
             Height = 32,
-            Text = "폴더를 드래그해 놓으세요.",
+            Name = "folderDropTitle",
+            Text = L10n.T("폴더를 드래그해 놓으세요."),
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.FromArgb(18, 38, 72),
             BackColor = Color.Transparent,
@@ -148,7 +150,8 @@ public partial class MainForm
         var dropSub = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "또는 파일을 드래그해 주세요.",
+            Name = "folderDropSub",
+            Text = L10n.T("또는 파일을 드래그해 주세요."),
             TextAlign = ContentAlignment.TopCenter,
             ForeColor = Color.FromArgb(110, 123, 143),
             BackColor = Color.Transparent,
@@ -186,7 +189,7 @@ public partial class MainForm
         {
             Dock = DockStyle.Bottom,
             Height = 96,
-            Text = "▧\n이미지가 없습니다.",
+            Text = L10n.T("▧\n이미지가 없습니다."),
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.FromArgb(181, 188, 199),
             BackColor = Color.White,
@@ -398,9 +401,9 @@ public partial class MainForm
         }
 
         string folderName = new DirectoryInfo(folder).Name;
-        _folderHeader.Text = "이미지 목록";
+        _folderHeader.Text = L10n.T("이미지 목록");
         if (_folderCountBadge != null)
-            _folderCountBadge.Text = $"{_folderList.Items.Count}개";
+            _folderCountBadge.Text = L10n.F("{0}개", _folderList.Items.Count);
         if (_folderPathHint != null)
             _folderPathHint.Text = folderName;
         if (_folderEmptyHint != null)
@@ -467,7 +470,7 @@ public partial class MainForm
             {
                 LoadImageDetached(path, ResolveSourcePathForWorkingFile(path));
                 SelectFolderImage(path);
-                statusLabel.Text = "일괄 처리 결과 이미지 - Ctrl+E로 잘못 처리된 마스크를 지울 수 있습니다.";
+                statusLabel.Text = L10n.T("일괄 처리 결과 이미지 - Ctrl+E로 잘못 처리된 마스크를 지울 수 있습니다.");
             }
             else
             {

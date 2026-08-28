@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace ImageMosaicEditor;
@@ -13,29 +14,28 @@ internal sealed class AutoMosaicSettingsDialog : Form
     private static readonly Color Blue = Color.FromArgb(28, 123, 235);
 
     private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _language = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly NumericUpDown _strength = new() { Minimum = 1, Maximum = 100, Value = 20 };
-    private readonly NumericUpDown _confidence = new()
-    {
-        Minimum = 0, Maximum = 1, DecimalPlaces = 2, Increment = 0.05M, Value = 0.25M
-    };
+    private readonly NumericUpDown _confidence = new() { Minimum = 0, Maximum = 1, DecimalPlaces = 2, Increment = 0.05M, Value = 0.25M };
     private readonly NumericUpDown _padding = new() { Minimum = 0, Maximum = 500, Value = 10 };
-    private readonly CheckBox _nipple = new() { Text = "유두" };
-    private readonly CheckBox _anus = new() { Text = "항문" };
-    private readonly CheckBox _testicles = new() { Text = "고환/남성 생식기" };
+    private readonly CheckBox _nipple = new() { Text = L10n.T("유두") };
+    private readonly CheckBox _anus = new() { Text = L10n.T("항문") };
+    private readonly CheckBox _testicles = new() { Text = L10n.T("고환/남성 생식기") };
 
     public AutoMosaicSettings Settings { get; private set; }
+    public string SelectedLanguage { get; private set; } = L10n.CurrentLanguage;
 
     public AutoMosaicSettingsDialog(AutoMosaicSettings current)
     {
         Settings = current.Clone();
-        Text = "자동 모자이크 설정";
+        Text = L10n.T("자동 모자이크 설정");
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(600, 500);
-        MinimumSize = new Size(600, 500);
+        ClientSize = new Size(620, 555);
+        MinimumSize = new Size(620, 555);
         BackColor = Background;
         Font = new Font("Segoe UI", 9.5f);
 
@@ -48,176 +48,107 @@ internal sealed class AutoMosaicSettingsDialog : Form
         _anus.Checked = current.IncludeAnus;
         _testicles.Checked = current.IncludeTesticles;
 
-        var header = new Panel
-        {
-            Dock = DockStyle.Top,
-            Height = 82,
-            BackColor = Surface,
-            Padding = new Padding(24, 14, 22, 10)
-        };
+        foreach (AppLanguage language in L10n.SupportedLanguages)
+            _language.Items.Add(language);
+        _language.DisplayMember = nameof(AppLanguage.DisplayName);
+        _language.SelectedItem = L10n.SupportedLanguages.First(x => x.Code == L10n.CurrentLanguage);
+
+        var header = new Panel { Dock = DockStyle.Top, Height = 82, BackColor = Surface, Padding = new Padding(24, 14, 22, 10) };
         var title = new Label
         {
-            Text = "자동 모자이크 설정",
-            Dock = DockStyle.Top,
-            Height = 30,
-            ForeColor = TextColor,
+            Text = L10n.T("자동 모자이크 설정"), Dock = DockStyle.Top, Height = 30, ForeColor = TextColor,
             Font = new Font("Segoe UI Semibold", 14f, FontStyle.Bold)
         };
         var subtitle = new Label
         {
-            Text = "검출 민감도와 처리 방식, 기본 검출 대상을 조정합니다.",
-            Dock = DockStyle.Fill,
-            ForeColor = Muted,
-            Font = new Font("Segoe UI", 9f),
-            TextAlign = ContentAlignment.MiddleLeft
+            Text = L10n.T("검출 민감도와 처리 방식, 기본 검출 대상을 조정합니다."), Dock = DockStyle.Fill,
+            ForeColor = Muted, Font = new Font("Segoe UI", 9f), TextAlign = ContentAlignment.MiddleLeft
         };
         header.Controls.Add(subtitle);
         header.Controls.Add(title);
 
-        var shell = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Background,
-            Padding = new Padding(20)
-        };
-        var card = new Panel
-        {
-            Dock = DockStyle.Fill,
-            BackColor = Surface,
-            Padding = new Padding(22, 18, 22, 18)
-        };
-
+        var shell = new Panel { Dock = DockStyle.Fill, BackColor = Background, Padding = new Padding(20) };
+        var card = new Panel { Dock = DockStyle.Fill, BackColor = Surface, Padding = new Padding(22, 18, 22, 18) };
         var table = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 7,
-            Padding = Padding.Empty,
-            Margin = Padding.Empty,
-            BackColor = Surface
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 8, Padding = Padding.Empty, Margin = Padding.Empty, BackColor = Surface
         };
-        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
+        table.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 175));
         table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        for (int i = 0; i < 5; i++) table.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 62));
         table.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         table.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
 
-        StyleInput(_mode);
-        StyleInput(_strength);
-        StyleInput(_confidence);
-        StyleInput(_padding);
-        StyleCheck(_nipple);
-        StyleCheck(_anus);
-        StyleCheck(_testicles);
+        StyleInput(_mode); StyleInput(_strength); StyleInput(_confidence); StyleInput(_padding); StyleInput(_language);
+        StyleCheck(_nipple); StyleCheck(_anus); StyleCheck(_testicles);
 
-        AddRow(table, 0, "처리 방식", _mode);
-        AddRow(table, 1, "강도", _strength);
-        AddRow(table, 2, "신뢰도", _confidence);
-        AddRow(table, 3, "검출 여백(px)", _padding);
+        AddRow(table, 0, L10n.T("처리 방식"), _mode);
+        AddRow(table, 1, L10n.T("강도"), _strength);
+        AddRow(table, 2, L10n.T("신뢰도"), _confidence);
+        AddRow(table, 3, L10n.T("검출 여백(px)"), _padding);
+        AddRow(table, 4, L10n.T("언어"), _language);
 
         var targets = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            WrapContents = true,
-            AutoScroll = false,
-            BackColor = Surface,
-            FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(0, 10, 0, 0),
-            Margin = Padding.Empty
+            Dock = DockStyle.Fill, WrapContents = true, AutoScroll = false, BackColor = Surface,
+            FlowDirection = FlowDirection.LeftToRight, Padding = new Padding(0, 10, 0, 0), Margin = Padding.Empty
         };
         targets.Controls.AddRange([_nipple, _anus, _testicles]);
-        AddRow(table, 4, "추가 검출", targets);
+        AddRow(table, 5, L10n.T("추가 검출"), targets);
 
         var hint = new Label
         {
             Dock = DockStyle.Fill,
-            Text = "설정을 변경한 뒤 다시 자동 처리하면 이전 처리본 위에 덧씌우지 않고 원본 이미지에서 새로 처리합니다.",
-            ForeColor = Muted,
-            Font = new Font("Segoe UI", 9f),
-            TextAlign = ContentAlignment.TopLeft,
-            Padding = new Padding(0, 12, 0, 0),
-            AutoEllipsis = true
+            Text = L10n.T("설정을 변경한 뒤 다시 자동 처리하면 이전 처리본 위에 덧씌우지 않고 원본 이미지에서 새로 처리합니다.") + "\n" +
+                   L10n.T("Windows 표시 언어를 처음 실행 시 자동 감지합니다."),
+            ForeColor = Muted, Font = new Font("Segoe UI", 9f), TextAlign = ContentAlignment.TopLeft,
+            Padding = new Padding(0, 10, 0, 0), AutoEllipsis = true
         };
-        table.Controls.Add(hint, 0, 5);
-        table.SetColumnSpan(hint, 2);
+        table.Controls.Add(hint, 0, 6); table.SetColumnSpan(hint, 2);
 
         var buttons = new FlowLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
-            BackColor = Surface,
-            Padding = new Padding(0, 12, 0, 0),
-            Margin = Padding.Empty
+            Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft, WrapContents = false,
+            BackColor = Surface, Padding = new Padding(0, 12, 0, 0), Margin = Padding.Empty
         };
-        var ok = CreateButton("확인", true);
-        var cancel = CreateButton("취소", false);
-        ok.DialogResult = DialogResult.OK;
-        cancel.DialogResult = DialogResult.Cancel;
+        var ok = CreateButton(L10n.T("확인"), true);
+        var cancel = CreateButton(L10n.T("취소"), false);
+        ok.DialogResult = DialogResult.OK; cancel.DialogResult = DialogResult.Cancel;
         ok.Click += (_, _) => SaveSettings();
-        buttons.Controls.Add(ok);
-        buttons.Controls.Add(cancel);
-        table.Controls.Add(buttons, 0, 6);
-        table.SetColumnSpan(buttons, 2);
+        buttons.Controls.Add(ok); buttons.Controls.Add(cancel);
+        table.Controls.Add(buttons, 0, 7); table.SetColumnSpan(buttons, 2);
 
-        card.Controls.Add(table);
-        shell.Controls.Add(card);
-        Controls.Add(shell);
-        Controls.Add(header);
-        AcceptButton = ok;
-        CancelButton = cancel;
+        card.Controls.Add(table); shell.Controls.Add(card); Controls.Add(shell); Controls.Add(header);
+        AcceptButton = ok; CancelButton = cancel;
     }
 
-    private static Button CreateButton(string text, bool primary)
+    private static Button CreateButton(string text, bool primary) => new()
     {
-        return new Button
-        {
-            Text = text,
-            Width = 102,
-            Height = 38,
-            FlatStyle = FlatStyle.Flat,
-            BackColor = primary ? Blue : Color.FromArgb(246, 248, 251),
-            ForeColor = primary ? Color.White : TextColor,
-            Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold),
-            Margin = new Padding(8, 0, 0, 0),
-            FlatAppearance = { BorderColor = primary ? Blue : Color.FromArgb(215, 222, 232), BorderSize = 1 }
-        };
-    }
+        Text = text, Width = 102, Height = 38, FlatStyle = FlatStyle.Flat,
+        BackColor = primary ? Blue : Color.FromArgb(246, 248, 251), ForeColor = primary ? Color.White : TextColor,
+        Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold), Margin = new Padding(8, 0, 0, 0),
+        FlatAppearance = { BorderColor = primary ? Blue : Color.FromArgb(215, 222, 232), BorderSize = 1 }
+    };
 
     private static void StyleInput(Control control)
     {
-        control.Font = new Font("Segoe UI", 9.5f);
-        control.BackColor = Surface;
-        control.ForeColor = TextColor;
-        control.Margin = new Padding(0, 8, 0, 8);
+        control.Font = new Font("Segoe UI", 9.5f); control.BackColor = Surface; control.ForeColor = TextColor; control.Margin = new Padding(0, 8, 0, 8);
     }
 
     private static void StyleCheck(CheckBox control)
     {
-        control.ForeColor = TextColor;
-        control.BackColor = Surface;
-        control.Margin = new Padding(0, 0, 18, 0);
-        control.AutoSize = true;
+        control.ForeColor = TextColor; control.BackColor = Surface; control.Margin = new Padding(0, 0, 18, 0); control.AutoSize = true;
     }
 
     private static void AddRow(TableLayoutPanel table, int row, string label, Control control)
     {
         var lbl = new Label
         {
-            Text = label,
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = TextColor,
-            Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold),
-            Margin = Padding.Empty
+            Text = label, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, ForeColor = TextColor,
+            Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold), Margin = Padding.Empty
         };
-        control.Dock = DockStyle.Fill;
-        table.Controls.Add(lbl, 0, row);
-        table.Controls.Add(control, 1, row);
+        control.Dock = DockStyle.Fill; table.Controls.Add(lbl, 0, row); table.Controls.Add(control, 1, row);
     }
 
     private void SaveSettings()
@@ -232,5 +163,6 @@ internal sealed class AutoMosaicSettingsDialog : Form
             IncludeAnus = _anus.Checked,
             IncludeTesticles = _testicles.Checked
         };
+        SelectedLanguage = (_language.SelectedItem as AppLanguage)?.Code ?? L10n.CurrentLanguage;
     }
 }

@@ -22,18 +22,19 @@ public partial class MainForm
         InitializeDragDropImport();
         InitializeEraserTools();
 
-        var autoMenu = new ToolStripMenuItem("자동 모자이크(&A)");
+        var autoMenu = new ToolStripMenuItem(L10n.T("자동 모자이크(&A)")) { Name = "autoMosaicMenu" };
 
-        var currentItem = new ToolStripMenuItem("현재 이미지 다시 자동 처리(&A)")
+        var currentItem = new ToolStripMenuItem(L10n.T("현재 이미지 다시 자동 처리(&A)"))
         {
+            Name = "autoCurrentMenu",
             ShortcutKeys = Keys.Control | Keys.Shift | Keys.A
         };
         currentItem.Click += MenuAutoCurrent_Click;
 
-        var batchItem = new ToolStripMenuItem("폴더 일괄 처리(&B)");
+        var batchItem = new ToolStripMenuItem(L10n.T("폴더 일괄 처리(&B)")) { Name = "autoBatchMenu" };
         batchItem.Click += MenuAutoBatch_Click;
 
-        var settingsItem = new ToolStripMenuItem("설정(&S)");
+        var settingsItem = new ToolStripMenuItem(L10n.T("설정(&S)")) { Name = "autoSettingsMenu" };
         settingsItem.Click += MenuAutoSettings_Click;
 
         autoMenu.DropDownItems.AddRange([
@@ -65,8 +66,8 @@ public partial class MainForm
 
         using var dlg = new OpenFileDialog
         {
-            Title = "이미지 파일 열기",
-            Filter = "이미지 파일 (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp|모든 파일 (*.*)|*.*"
+            Title = L10n.T("이미지 파일 열기"),
+            Filter = L10n.T("이미지 파일 (*.png;*.jpg;*.jpeg;*.webp)|*.png;*.jpg;*.jpeg;*.webp|모든 파일 (*.*)|*.*")
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
         await ImportAndAutoCensorAsync(dlg.FileName);
@@ -142,7 +143,7 @@ public partial class MainForm
             }
 
             SelectFolderImage(path);
-            statusLabel.Text = "이미지 가져오기 완료 - 자동 검열을 시작합니다...";
+            statusLabel.Text = L10n.T("이미지 가져오기 완료 - 자동 검열을 시작합니다...");
 
             stage = "자동 검열";
             await AutoCensorCurrentImageAsync(showUndetectedMessage: false);
@@ -176,7 +177,7 @@ public partial class MainForm
         {
             if (showUndetectedMessage)
             {
-                MessageBox.Show("먼저 이미지를 열어주세요.", "자동 모자이크",
+                MessageBox.Show(L10n.T("먼저 이미지를 열어주세요."), L10n.T("자동 모자이크"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             return;
@@ -187,7 +188,7 @@ public partial class MainForm
         string output = Path.Combine(tempDir, "output.png");
         Directory.CreateDirectory(tempDir);
 
-        using var progressWindow = new AutoMosaicProgressForm("자동 검열 진행");
+        using var progressWindow = new AutoMosaicProgressForm(L10n.T("자동 검열 진행"));
         var progress = new Progress<AutoMosaicProgress>(p =>
         {
             if (!progressWindow.IsDisposed && progressWindow.IsHandleCreated)
@@ -198,9 +199,9 @@ public partial class MainForm
         string stage = "자동 검열 준비";
         try
         {
-            SetAutoBusy(true, "자동 검열 준비 중...");
+            SetAutoBusy(true, L10n.T("자동 검열 준비 중..."));
             progressWindow.Show(this);
-            progressWindow.UpdateProgress(new AutoMosaicProgress(1, "원본 이미지에서 새로 처리 준비 중..."));
+            progressWindow.UpdateProgress(new AutoMosaicProgress(1, L10n.T("원본 이미지에서 새로 처리 준비 중...")));
 
             // Always feed the untouched source bitmap to Python. Changing mask
             // settings can therefore never stack a new mosaic over an old one.
@@ -216,11 +217,11 @@ public partial class MainForm
                 // A fresh run with no detections means the working image must also
                 // become clean source, rather than leaving the previous mask behind.
                 ResetWorkingFromSource(saveUndo: true);
-                statusLabel.Text = $"자동 검출 완료: 검열 대상 영역 없음{ProviderSuffix(result.Provider)}";
+                statusLabel.Text = L10n.F("자동 검출 완료: 검열 대상 영역 없음{0}", ProviderSuffix(result.Provider));
                 if (showUndetectedMessage)
                 {
-                    MessageBox.Show("검출된 영역이 없습니다. 이전 자동 처리는 제거하고 원본으로 되돌렸습니다.",
-                        "자동 모자이크", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show(L10n.T("검출된 영역이 없습니다. 이전 자동 처리는 제거하고 원본으로 되돌렸습니다."),
+                        L10n.T("자동 모자이크"), MessageBoxButtons.OK, MessageBoxIcon.Information);
                 }
                 return;
             }
@@ -228,11 +229,11 @@ public partial class MainForm
             stage = "검열 결과 이미지 로드";
             Bitmap processed = LoadBitmapDetached(output);
             ReplaceWorkingBitmap(processed, saveUndo: true);
-            statusLabel.Text = $"자동 검열 완료: {result.Count}개 영역{ProviderSuffix(result.Provider)}";
+            statusLabel.Text = L10n.F("자동 검열 완료: {0}개 영역{1}", result.Count, ProviderSuffix(result.Provider));
 
             if (!string.IsNullOrWhiteSpace(result.Warning))
             {
-                MessageBox.Show(result.Warning, "자동 모자이크 경고",
+                MessageBox.Show(result.Warning, L10n.T("자동 모자이크 경고"),
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
@@ -255,7 +256,7 @@ public partial class MainForm
 
         using var dlg = new FolderBrowserDialog
         {
-            Description = "자동 처리할 이미지 폴더를 선택하세요.",
+            Description = L10n.T("자동 처리할 이미지 폴더를 선택하세요."),
             UseDescriptionForTitle = true
         };
         if (dlg.ShowDialog(this) != DialogResult.OK) return;
@@ -277,7 +278,7 @@ public partial class MainForm
         _lastBatchInputDir = inputDir;
         _lastBatchOutputDir = Path.GetFullPath(outputDir);
 
-        using var progressWindow = new AutoMosaicProgressForm("폴더 전체 자동 검열 진행");
+        using var progressWindow = new AutoMosaicProgressForm(L10n.T("폴더 전체 자동 검열 진행"));
         var progress = new Progress<AutoMosaicProgress>(p =>
         {
             if (!progressWindow.IsDisposed && progressWindow.IsHandleCreated)
@@ -287,15 +288,15 @@ public partial class MainForm
 
         try
         {
-            SetAutoBusy(true, "폴더 전체 자동 검열 준비 중...");
+            SetAutoBusy(true, L10n.T("폴더 전체 자동 검열 준비 중..."));
             progressWindow.Show(this);
-            progressWindow.UpdateProgress(new AutoMosaicProgress(1, "처리할 파일 확인 중..."));
+            progressWindow.UpdateProgress(new AutoMosaicProgress(1, L10n.T("처리할 파일 확인 중...")));
             Directory.CreateDirectory(outputDir);
 
             AutoMosaicResult result = await AutoMosaicEngine.ProcessFolderAsync(
                 inputDir, outputDir, _autoSettings, progress);
 
-            statusLabel.Text = $"전체 처리 완료: 처리 {result.Processed}, 미검출 {result.Undetected}, 오류 {result.Errors}{ProviderSuffix(result.Provider)}";
+            statusLabel.Text = L10n.F("전체 처리 완료: 처리 {0}, 미검출 {1}, 오류 {2}{3}", result.Processed, result.Undetected, result.Errors, ProviderSuffix(result.Provider));
 
             if (openOutputFolder && Directory.Exists(outputDir))
             {
@@ -313,13 +314,13 @@ public partial class MainForm
                 }
             }
 
-            string message = $"출력 폴더:\n{outputDir}\n\n처리: {result.Processed}개\n미검출: {result.Undetected}개\n오류: {result.Errors}개\n검출 영역: {result.Count}개";
+            string message = L10n.F("출력 폴더:\n{0}\n\n처리: {1}개\n미검출: {2}개\n오류: {3}개\n검출 영역: {4}개", outputDir, result.Processed, result.Undetected, result.Errors, result.Count);
             if (!string.IsNullOrWhiteSpace(result.Provider))
-                message += $"\n실행 장치: {result.Provider}";
+                message += "\n" + L10n.F("실행 장치: {0}", result.Provider);
             if (!string.IsNullOrWhiteSpace(result.Warning))
-                message += $"\n\n경고: {result.Warning}";
+                message += "\n\n" + L10n.F("경고: {0}", result.Warning);
 
-            MessageBox.Show(message, "폴더 전체 자동 모자이크 완료",
+            MessageBox.Show(message, L10n.T("폴더 전체 자동 모자이크 완료"),
                 MessageBoxButtons.OK,
                 result.Errors == 0 ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
@@ -368,10 +369,15 @@ public partial class MainForm
         if (dlg.ShowDialog(this) == DialogResult.OK)
         {
             _autoSettings = dlg.Settings;
+            if (!string.Equals(L10n.CurrentLanguage, dlg.SelectedLanguage, StringComparison.OrdinalIgnoreCase))
+            {
+                L10n.SetLanguage(dlg.SelectedLanguage);
+                ApplyLocalization();
+            }
             int enabled = (_autoSettings.IncludeNipple ? 1 : 0)
                 + (_autoSettings.IncludeAnus ? 1 : 0)
                 + (_autoSettings.IncludeTesticles ? 1 : 0);
-            statusLabel.Text = $"자동 모자이크 설정: {_autoSettings.Mode} / 추가 검출 {enabled}/3 - 다시 처리하면 원본에서 새로 적용됩니다.";
+            statusLabel.Text = L10n.F("자동 모자이크 설정: {0} / 추가 검출 {1}/3 - 다시 처리하면 원본에서 새로 적용됩니다.", _autoSettings.Mode, enabled);
         }
     }
 
@@ -387,11 +393,11 @@ public partial class MainForm
 
     private void ShowAutoError(Exception ex, string? stage = null)
     {
-        statusLabel.Text = "자동 모자이크 처리 실패";
-        string stageText = string.IsNullOrWhiteSpace(stage) ? string.Empty : $"오류 단계: {stage}\n\n";
+        statusLabel.Text = L10n.T("자동 모자이크 처리 실패");
+        string stageText = string.IsNullOrWhiteSpace(stage) ? string.Empty : L10n.F("오류 단계: {0}\n\n", stage);
         MessageBox.Show(
-            $"{stageText}{ex.Message}\n\n상세 로그: %LOCALAPPDATA%\\ImageMosaicEditor\\auto-error.log",
-            "자동 모자이크 오류",
+            L10n.F("{0}{1}\n\n상세 로그: %LOCALAPPDATA%\\ImageMosaicEditor\\auto-error.log", stageText, ex.Message),
+            L10n.T("자동 모자이크 오류"),
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);
     }

@@ -112,8 +112,8 @@ internal static class AutoMosaicEngine
                 {
                     int value = root.TryGetProperty("value", out JsonElement v) ? v.GetInt32() : 0;
                     string message = root.TryGetProperty("message", out JsonElement m)
-                        ? m.GetString() ?? "처리 중..."
-                        : "처리 중...";
+                        ? m.GetString() ?? L10n.T("처리 중...")
+                        : L10n.T("처리 중...");
                     progress?.Report(new AutoMosaicProgress(value, message));
                 }
                 else if (root.TryGetProperty("status", out _))
@@ -146,7 +146,7 @@ internal static class AutoMosaicEngine
                 : message);
         }
 
-        progress?.Report(new AutoMosaicProgress(100, "처리 완료"));
+        progress?.Report(new AutoMosaicProgress(100, L10n.T("처리 완료")));
         return parsed ?? throw new InvalidOperationException(
             $"자동 모자이크 엔진의 응답을 해석할 수 없습니다.\n{stderr}\n{stdoutLog}".Trim());
     }
@@ -212,6 +212,7 @@ internal static class AutoMosaicEngine
         psi.Environment["PYTHONUTF8"] = "1";
         psi.Environment["PYTHONIOENCODING"] = "utf-8";
         psi.Environment["PYTHONNOUSERSITE"] = "1";
+        psi.Environment["IMAGE_MOSAIC_LANG"] = L10n.CurrentLanguage;
         foreach (string arg in arguments) psi.ArgumentList.Add(arg);
         return psi;
     }

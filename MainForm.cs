@@ -41,8 +41,8 @@ namespace ImageMosaicEditor
         {
             using var dlg = new OpenFileDialog
             {
-                Title = "이미지 파일 열기",
-                Filter = "이미지 파일 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|모든 파일 (*.*)|*.*"
+                Title = L10n.T("이미지 파일 열기"),
+                Filter = L10n.T("이미지 파일 (*.png;*.jpg;*.jpeg)|*.png;*.jpg;*.jpeg|모든 파일 (*.*)|*.*")
             };
 
             if (dlg.ShowDialog() != DialogResult.OK) return;
@@ -55,7 +55,7 @@ namespace ImageMosaicEditor
         {
             if (_originalBitmap == null || string.IsNullOrEmpty(_currentFilePath))
             {
-                MessageBox.Show("저장할 이미지가 없습니다.", "알림",
+                MessageBox.Show(L10n.T("저장할 이미지가 없습니다."), L10n.T("알림"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
@@ -91,7 +91,7 @@ namespace ImageMosaicEditor
 
             pictureBox.Image = _originalBitmap;
             pictureBox.SizeMode = PictureBoxSizeMode.Zoom;
-            this.Text = $"이미지 모자이크 편집기 - {System.IO.Path.GetFileName(path)}";
+            this.Text = L10n.F("이미지 모자이크 편집기 - {0}", System.IO.Path.GetFileName(path));
         }
 
         // ── Save helper ──────────────────────────────────────────────────────────
@@ -109,12 +109,12 @@ namespace ImageMosaicEditor
                 };
 
                 _originalBitmap.Save(_currentFilePath, format);
-                MessageBox.Show("저장되었습니다.", "저장 완료",
+                MessageBox.Show(L10n.T("저장되었습니다."), L10n.T("저장 완료"),
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"저장 중 오류가 발생했습니다:\n{ex.Message}", "오류",
+                MessageBox.Show(L10n.F("저장 중 오류가 발생했습니다:\n{0}", ex.Message), L10n.T("오류"),
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

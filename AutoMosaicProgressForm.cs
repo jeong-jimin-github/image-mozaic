@@ -74,7 +74,7 @@ internal sealed class AutoMosaicProgressForm : Form
 
         var hint = new Label
         {
-            Text = "AI 검출 단계에서는 모델 실행 동안 진행률이 잠시 같은 위치에 머물 수 있습니다.",
+            Text = L10n.T("AI 검출 단계에서는 모델 실행 동안 진행률이 잠시 같은 위치에 머물 수 있습니다."),
             Dock = DockStyle.Fill,
             ForeColor = Color.FromArgb(111, 123, 143),
             TextAlign = ContentAlignment.MiddleLeft,
@@ -92,6 +92,6 @@ internal sealed class AutoMosaicProgressForm : Form
         int value = Math.Clamp(progress.Value, 0, 100);
         _progress.Value = value;
         _percent.Text = $"{value}%";
-        _message.Text = string.IsNullOrWhiteSpace(progress.Message) ? "처리 중..." : progress.Message;
+        _message.Text = string.IsNullOrWhiteSpace(progress.Message) ? L10n.T("처리 중...") : progress.Message;
     }
 }
